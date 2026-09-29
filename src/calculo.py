@@ -5,6 +5,7 @@ Aplica estrictamente las fórmulas del curso:
 - Mononobe-Okabe para K dinámico (Sismo).
 - Jarquio (1981) para fuerzas de sobrecargas finitas.
 - Boussinesq Modificado para el dibujo del bulbo de presiones.
+- Integración matemática de esfuerzos negativos (Grietas de tracción).
 """
 import math
 from modelos import Caso, Resultado, FilaResultado, AreaDetalle
@@ -88,8 +89,9 @@ def resolver(caso: Caso) -> Resultado:
         Ka = calcular_K_estatico(est_actual.phi, caso.alpha, caso.beta, est_actual.delta, caso.condicion, caso.metodo)
         raiz_K = math.sqrt(Ka) if Ka > 0 else 0
         
+        # --- LIBERACIÓN DEL LÍMITE NEGATIVO ---
         p_suelo = (Ka * sigma_v)
-        if caso.condicion == 'activa': p_suelo = max(0, p_suelo - 2 * est_actual.cohesion * raiz_K)
+        if caso.condicion == 'activa': p_suelo = p_suelo - 2 * est_actual.cohesion * raiz_K
         elif caso.condicion == 'pasiva': p_suelo += 2 * est_actual.cohesion * raiz_K
 
         p_agua = (z - caso.z_agua) * caso.gamma_agua if es_sat else 0.0
@@ -112,7 +114,7 @@ def resolver(caso: Caso) -> Resultado:
             zc = z1 + h_tr/2 if (p1 + p2) == 0 else z1 + h_tr * (2*p2 + p1) / (3*(p1 + p2))
             F += dF
             M += dF * zc
-        y_b = (H - (M / F)) if F > 1e-9 else 0.0
+        y_b = (H - (M / F)) if abs(F) > 1e-9 else 0.0
         return F, F * y_b, y_b
 
     P_s, M_s, y_s = integrar_columna('suelo')
@@ -139,9 +141,9 @@ def resolver(caso: Caso) -> Resultado:
                 
     P_c_total = P_c_inf + P_c_finita
     M_c_total = M_c_inf + M_c_finita
-    y_c_total = M_c_total / P_c_total if P_c_total > 1e-9 else 0.0
+    y_c_total = M_c_total / P_c_total if abs(P_c_total) > 1e-9 else 0.0
     
-    y_c_finita = M_c_finita / P_c_finita if P_c_finita > 1e-9 else 0.0
+    y_c_finita = M_c_finita / P_c_finita if abs(P_c_finita) > 1e-9 else 0.0
 
     P_sismo_neto, M_sismo_neto, y_sismo_neto = 0.0, 0.0, 0.0
     if caso.kh > 0 and caso.condicion == 'activa':
@@ -161,25 +163,25 @@ def resolver(caso: Caso) -> Resultado:
             F_din += dF
             M_din_corona += dF * zc
             
-            filas[i].sismo = max(0, p1_din - filas[i].suelo)
+            filas[i].sismo = p1_din - max(0, filas[i].suelo)
             filas[i].total = filas[i].suelo + filas[i].agua + filas[i].carga + filas[i].sismo
             
         last_est_id = filas[-1].estrato
         last_est = caso.estratos[last_est_id - 1]
         Kae_last = calcular_K_dinamico(last_est.phi, caso.alpha, caso.beta, last_est.delta, caso.kh, caso.kv)
         p_last_din = filas[-1].sigma_v * Kae_last
-        filas[-1].sismo = max(0, p_last_din - filas[-1].suelo)
+        filas[-1].sismo = p_last_din - max(0, filas[-1].suelo)
         filas[-1].total = filas[-1].suelo + filas[-1].agua + filas[-1].carga + filas[-1].sismo
             
         P_ae = F_din
-        Delta_Pae = max(0, P_ae - P_s) 
+        Delta_Pae = P_ae - P_s 
         P_sismo_neto = Delta_Pae
         y_sismo_neto = 0.6 * H 
         M_sismo_neto = P_sismo_neto * y_sismo_neto
 
     P_tot = P_s + P_w + P_c_total + P_sismo_neto
     M_tot = M_s + M_w + M_c_total + M_sismo_neto
-    y_tot = (M_tot / P_tot) if P_tot > 1e-9 else 0.0
+    y_tot = (M_tot / P_tot) if abs(P_tot) > 1e-9 else 0.0
     
     comp = {
         'Suelo': (P_s, M_s, y_s), 
@@ -208,46 +210,59 @@ def resolver(caso: Caso) -> Resultado:
         if chunk_z: chunks.append((chunk_z, chunk_p))
             
         TOL = 0.1 
+        
+        # --- INTERPOLADOR Zc PARA PRESIONES NEGATIVAS ---
+        # Corta matemáticamente las figuras que cruzan el cero
+        new_chunks = []
         for z_arr, p_arr in chunks:
-            if max(p_arr) < 1e-9: continue
+            p_top, p_bot = p_arr[0], p_arr[-1]
+            if p_top * p_bot < -TOL: 
+                h_tr = z_arr[-1] - z_arr[0]
+                z_zero = z_arr[0] + h_tr * abs(p_top) / (abs(p_top) + abs(p_bot))
+                new_chunks.append(([z_arr[0], z_zero], [p_top, 0.0]))
+                new_chunks.append(([z_zero, z_arr[-1]], [0.0, p_bot]))
+            else:
+                new_chunks.append((z_arr, p_arr))
+
+        for z_arr, p_arr in new_chunks:
+            if all(abs(p) <= TOL for p in p_arr): continue
             z_top, z_bot = z_arr[0], z_arr[-1]
             p_top, p_bot = p_arr[0], p_arr[-1]
             h_tr = z_bot - z_top
             
             if h_tr > 0.05:
-                if abs(p_bot - p_top) > TOL and p_bot > TOL and p_top > TOL:
-                    min_p = min(p_top, p_bot)
-                    detalles.append(AreaDetalle(area_idx, nombre_comp, 'Rectángulo', min_p * h_tr, z_top + h_tr/2, H - (z_top + h_tr/2), min_p / 2.0, min_p, h_tr))
+                if abs(p_bot) > TOL and abs(p_top) <= TOL:
+                    F = (p_bot * h_tr) / 2.0
+                    detalles.append(AreaDetalle(area_idx, nombre_comp, 'Triángulo', F, z_top + h_tr*(2/3), H - (z_top + h_tr*(2/3)), p_bot / 3.0, p_bot, h_tr))
                     area_idx += 1
-                    F_tri = abs(p_bot - p_top) * h_tr / 2.0
-                    zc_tri = z_top + h_tr*(2/3) if p_bot > p_top else z_top + h_tr*(1/3)
-                    detalles.append(AreaDetalle(area_idx, nombre_comp, 'Triángulo', F_tri, zc_tri, H - zc_tri, min_p + abs(p_bot - p_top)/3.0, abs(p_bot - p_top), h_tr))
-                    area_idx += 1
-                elif p_bot > TOL and p_top <= TOL:
-                    detalles.append(AreaDetalle(area_idx, nombre_comp, 'Triángulo', p_bot * h_tr / 2.0, z_top + h_tr*(2/3), H - (z_top + h_tr*(2/3)), p_bot / 3.0, p_bot, h_tr))
-                    area_idx += 1
-                elif p_top > TOL and p_bot <= TOL:
-                    detalles.append(AreaDetalle(area_idx, nombre_comp, 'Triángulo', p_top * h_tr / 2.0, z_top + h_tr*(1/3), H - (z_top + h_tr*(1/3)), p_top / 3.0, p_top, h_tr))
+                elif abs(p_top) > TOL and abs(p_bot) <= TOL:
+                    F = (p_top * h_tr) / 2.0
+                    detalles.append(AreaDetalle(area_idx, nombre_comp, 'Triángulo', F, z_top + h_tr*(1/3), H - (z_top + h_tr*(1/3)), p_top / 3.0, p_top, h_tr))
                     area_idx += 1
                 else:
-                    if (p_top+p_bot)/2 > TOL/2:
-                        detalles.append(AreaDetalle(area_idx, nombre_comp, 'Rectángulo', p_top * h_tr, z_top + h_tr/2, H - (z_top + h_tr/2), p_top / 2.0, p_top, h_tr))
+                    sign = 1 if p_top > 0 else -1
+                    min_p_abs = min(abs(p_top), abs(p_bot))
+                    min_p = min_p_abs * sign
+                    
+                    F_rect = min_p * h_tr
+                    detalles.append(AreaDetalle(area_idx, nombre_comp, 'Rectángulo', F_rect, z_top + h_tr/2, H - (z_top + h_tr/2), min_p / 2.0, min_p, h_tr))
+                    area_idx += 1
+                    
+                    if abs(p_bot - p_top) > TOL:
+                        F_tri = (p_bot - p_top) * h_tr / 2.0
+                        zc_tri = z_top + h_tr*(2/3) if abs(p_bot) > abs(p_top) else z_top + h_tr*(1/3)
+                        detalles.append(AreaDetalle(area_idx, nombre_comp, 'Triángulo', F_tri, zc_tri, H - zc_tri, min_p + (p_bot - p_top)/3.0, (p_bot - p_top), h_tr))
                         area_idx += 1
 
-    # 1. Extracción de Suelo y Agua
     extraer_detalles('suelo', 'Suelo')
     extraer_detalles('agua', 'Agua')
-    
-    # 2. Extracción de TODAS las Sobrecargas (Infinitas y Finitas) bajo el MISMO nombre
     if P_c_inf > 0: extraer_detalles('carga_inf', 'Sobrecarga')
-    
     if P_c_finita > 0:
         p_max_boussinesq = sum(boussinesq_franja(c.magnitud, c.a, c.b, H - y_c_finita) for c in caso.cargas if c.tipo.lower() == 'franja')
-        detalles.append(AreaDetalle(area_idx, 'Sobrecarga', 'Solución de Jarquio', P_c_finita, H - y_c_finita, y_c_finita, p_max_boussinesq / 2.0, P_c_finita, H))
+        detalles.append(AreaDetalle(area_idx, 'Sobrecarga', 'Bulbo Boussinesq (Jarquio)', P_c_finita, H - y_c_finita, y_c_finita, p_max_boussinesq / 2.0, P_c_finita, H))
         area_idx += 1 
         
-    # 3. Extracción de Sismo al FINAL
-    if P_sismo_neto > 0: 
+    if abs(P_sismo_neto) > 0.05: 
         extraer_detalles('sismo', 'Sismo')
 
-    return Resultado(caso=caso, filas=filas, total=P_tot, momento=M_tot, y=y_tot, componentes=comp, detalles=detalles, notas=["Cálculo actualizado con Teoría de Jarquio (1981) y Bulbo de Boussinesq."])
+    return Resultado(caso=caso, filas=filas, total=P_tot, momento=M_tot, y=y_tot, componentes=comp, detalles=detalles, notas=["Cálculo incluye interpolación analítica de grietas de tracción (esfuerzos negativos)."])

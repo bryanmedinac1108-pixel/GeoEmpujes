@@ -3,6 +3,8 @@ Módulo Principal de Interfaz Gráfica (GUI) - Tkinter.
 Avanzado: 
 - Gestor de Unidades Desacoplado (L, F, P, Gamma).
 - Renderizado en segundo plano para capas individuales.
+- Límite de caracteres Unicode (1 a 10) para la tabla de resultados.
+- Auto-expansión dinámica de columnas en la tabla de estratos.
 """
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
@@ -251,7 +253,8 @@ class Aplicacion(tk.Tk):
             vis_cols = cols[:-1] if self.metodo.get() in ['Rankine', 'Jaky'] else cols
             self.tabla_e.configure(displaycolumns=vis_cols)
             for c in vis_cols:
-                self.tabla_e.column(c, width=100, minwidth=50, stretch=True, anchor='center')
+                # Se eliminó el parámetro width=100 para permitir auto-expansión horizontal.
+                self.tabla_e.column(c, minwidth=50, stretch=True, anchor='center')
             self._actualizar_grafico_muro()
 
     def _cambio_tipo_muro(self, event=None):
@@ -273,7 +276,8 @@ class Aplicacion(tk.Tk):
         t = ttk.Treeview(f, columns=cols, show='headings', height=height, selectmode='extended')
         for col in cols: 
             t.heading(col, text=col)
-            t.column(col, width=100, minwidth=50, anchor='center', stretch=True)
+            # Se permite a Tkinter distribuir el espacio estirando cada columna equitativamente
+            t.column(col, minwidth=50, anchor='center', stretch=True)
         s = ttk.Scrollbar(f, orient='vertical', command=t.yview); t.configure(yscroll=s.set)
         t.pack(side='left', fill='both', expand=True); s.pack(side='right', fill='y')
         return t
@@ -608,19 +612,16 @@ class Aplicacion(tk.Tk):
         self.componentes.heading('y base', text=f'Brazo y ({L})')
         
         for d in r.detalles:
-            if d.fuerza * scale_P_lineal > 0.005:
+            if abs(d.fuerza * scale_P_lineal) > 0.05:
                 F_val = d.fuerza * scale_P_lineal
                 y_val = d.y_base * scale_z
-                
-                # --- FORMATO DE NÚMEROS LIMPIO ---
                 circle_num = f"({d.id})"
-                
                 self.componentes.insert('', 'end', values=[f" {circle_num} {d.componente} ({d.forma})", f'{F_val:.3f}', f'{y_val:.3f}'])
 
         self.componentes.insert('', 'end', values=['---------------------------------------', '---------', '---------'])
         
         for nombre, vals in [*r.componentes.items(), ('GRAN TOTAL', (r.total, r.momento, r.y))]:
-            if vals[0] * scale_P_lineal > 0.005:
+            if abs(vals[0] * scale_P_lineal) > 0.05:
                 self.componentes.insert('', 'end', values=[f"∑ {nombre.upper()}", f'{vals[0]*scale_P_lineal:.3f}', f'{vals[2]*scale_z:.3f}'])
             
         for id in self.tabla_r.get_children(): self.tabla_r.delete(id)
@@ -712,19 +713,19 @@ class Aplicacion(tk.Tk):
             
             c = self.resultado.componentes
             
-            v_suelo = c['Suelo'][0] > 1e-5
+            v_suelo = abs(c['Suelo'][0]) > 1e-5
             self.vis_suelo.set(v_suelo)
             self.chk_suelo.configure(state='normal' if v_suelo else 'disabled')
             
-            v_agua = c['Agua'][0] > 1e-5
+            v_agua = abs(c['Agua'][0]) > 1e-5
             self.vis_agua.set(v_agua)
             self.chk_agua.configure(state='normal' if v_agua else 'disabled')
             
-            v_carga = c['Sobrecarga'][0] > 1e-5
+            v_carga = abs(c['Sobrecarga'][0]) > 1e-5
             self.vis_carga.set(v_carga)
             self.chk_carga.configure(state='normal' if v_carga else 'disabled')
             
-            v_sismo = c['Incremento sísmico'][0] > 1e-5
+            v_sismo = abs(c['Incremento sísmico'][0]) > 1e-5
             self.vis_sismo.set(v_sismo)
             self.chk_sismo.configure(state='normal' if v_sismo else 'disabled')
             
@@ -785,7 +786,7 @@ class Aplicacion(tk.Tk):
                 ]
                 
                 for clave_vis, clave_comp, magnitud, titulo in capas:
-                    if magnitud * scale_P_lineal > 1e-5:
+                    if abs(magnitud * scale_P_lineal) > 1e-5:
                         fig_tmp = Figure(figsize=(5, 4), dpi=200, tight_layout=True)
                         canvas_tmp = FigureCanvasAgg(fig_tmp)
                         ax_tmp = fig_tmp.add_subplot(111)
