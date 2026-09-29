@@ -1,8 +1,7 @@
 """
 Módulo de Gráficos Geotécnicos con Matplotlib.
 Renderiza el perfil y los polígonos de presión.
-Sistema visual limpio: Muestra las líneas de acción parciales sin saturar 
-de texto la gráfica (el texto se reserva solo para la Resultante Total).
+Avanzado: Centrado perfecto de etiquetas, con tolerancia visual al nivel de la matemática.
 """
 import math
 from matplotlib.figure import Figure
@@ -138,7 +137,7 @@ def renderizar_perfil(ax, altura, estratos, cargas=None, nf_val=None, alpha=0.0,
 
     ax.set_title("Perfil Geotécnico y Estratigrafía", fontweight='bold', fontsize=10)
 
-def renderizar_presiones(ax, resultado, scale_z=1.0, scale_p=1.0, unidad_p="kPa", unidad_z="m", scale_F=1.0, unidad_F="kN/m", visibles=None):
+def renderizar_presiones(ax, resultado, scale_z=1.0, scale_p=1.0, unidad_p="kPa", unidad_z="m", scale_F=1.0, unidad_F="kN/m", visibles=None, titulo_custom="Esfuerzos Horizontales Analíticos"):
     if visibles is None:
         visibles = {'Suelo': True, 'Agua': True, 'Sobrecarga': True, 'Sismo': True, 'Vectores': True}
         
@@ -172,7 +171,7 @@ def renderizar_presiones(ax, resultado, scale_z=1.0, scale_p=1.0, unidad_p="kPa"
     def transform(z_disp, p_scaled):
         return x_muro(z_disp) + p_scaled, z_disp - (p_scaled * ratio_z_x) * tan_t
 
-    def dibujar_formas_relleno(p_si_array, color_fill, color_line, is_water=False):
+    def dibujar_formas_relleno(p_si_array, color_fill, color_line, is_water=False, draw_subdivisions=True):
         p_scaled_array = [p * scale_p for p in p_si_array]
         if max(p_scaled_array) < 1e-9: return
         
@@ -190,8 +189,12 @@ def renderizar_presiones(ax, resultado, scale_z=1.0, scale_p=1.0, unidad_p="kPa"
                 chunk_z.append(z_disp); chunk_p.append(p_val)
         if chunk_z: chunks.append((chunk_z, chunk_p))
         
+        last_z_bot = -999.0
+        last_p_bot = -999.0
+
         for z_arr, p_arr in chunks:
             if max(p_arr) < 1e-9: continue
+            
             pts = [(x_muro(z), z) for z in z_arr] 
             pts += [transform(z, p) for z, p in zip(reversed(z_arr), reversed(p_arr))] 
             ax.add_patch(patches.Polygon(pts, facecolor=color_fill, alpha=0.9, edgecolor='none'))
@@ -201,33 +204,49 @@ def renderizar_presiones(ax, resultado, scale_z=1.0, scale_p=1.0, unidad_p="kPa"
                 x_v, z_v = transform(z, p); out_x.append(x_v); out_z.append(z_v)
             ax.plot(out_x, out_z, color=color_line, linestyle='--' if is_water else '-', linewidth=1.5)
             
-            z_top, z_bot = z_arr[0], z_arr[-1]
-            p_top, p_bot = p_arr[0], p_arr[-1]
-            
-            if z_bot < H_disp - 0.001:
-                x1, z1 = x_muro(z_bot), z_bot; x2, z2 = transform(z_bot, p_bot)
-                ax.plot([x1, x2], [z1, z2], color='gray', linestyle=':', linewidth=1.2)
+            if draw_subdivisions:
+                z_top, z_bot = z_arr[0], z_arr[-1]
+                p_top, p_bot = p_arr[0], p_arr[-1]
                 
-            xt, zt = transform(z_top, p_top)
-            xb, zb = transform(z_bot, p_bot)
-            if p_top > 0.01: ax.text(xt, zt, f" {p_top:.2f}", va='bottom', ha='left', fontsize=8, bbox=t_box)
-            if p_bot > 0.01 and abs(p_bot - p_top) > 0.01: ax.text(xb, zb, f" {p_bot:.2f}", va='top', ha='left', fontsize=8, bbox=t_box)
+                if z_bot < H_disp - 0.001:
+                    x1, z1 = x_muro(z_bot), z_bot; x2, z2 = transform(z_bot, p_bot)
+                    ax.plot([x1, x2], [z1, z2], color='gray', linestyle=':', linewidth=1.2)
+                    
+                xt, zt = transform(z_top, p_top)
+                xb, zb = transform(z_bot, p_bot)
                 
-            h_tramo = z_bot - z_top
-            if h_tramo > 0.05 * scale_z:
-                if abs(p_bot - p_top) > 0.01 and p_bot > 0.01 and p_top > 0.01:
-                    min_p = min(p_top, p_bot)
-                    x1, z1 = transform(z_top, min_p); x2, z2 = transform(z_bot, min_p)
-                    ax.plot([x1, x2], [z1, z2], color=color_line, linestyle='--', linewidth=0.8, alpha=0.7)
+                # --- TOLERANCIA DE 0.1 APLICADA AL DIBUJO PARA OCULTAR EL 0.05 ---
+                if p_top > 0.1:
+                    if abs(z_top - last_z_bot) < 0.001 and abs(p_top - last_p_bot) < 0.05:
+                        pass 
+                    else:
+                        ax.text(xt, zt, f" {p_top:.2f}", va='bottom', ha='left', fontsize=8, bbox=t_box)
+                        
+                if p_bot > 0.1 and abs(p_bot - p_top) > 0.1:
+                    ax.text(xb, zb, f" {p_bot:.2f}", va='top', ha='left', fontsize=8, bbox=t_box)
+                    
+                last_z_bot = z_bot
+                last_p_bot = p_bot
+                    
+                h_tramo = z_bot - z_top
+                if h_tramo > 0.05 * scale_z and len(p_arr) > 2:
+                    p_mid_real = p_arr[len(p_arr)//2]
+                    p_mid_linear = (p_top + p_bot) / 2.0
+                    es_recta = abs(p_mid_real - p_mid_linear) < max(0.05, 0.02 * max(p_arr))
+                    
+                    if es_recta:
+                        if abs(p_bot - p_top) > 0.1 and p_bot > 0.1 and p_top > 0.1:
+                            min_p = min(p_top, p_bot)
+                            x1, z1 = transform(z_top, min_p); x2, z2 = transform(z_bot, min_p)
+                            ax.plot([x1, x2], [z1, z2], color=color_line, linestyle='--', linewidth=0.8, alpha=0.7)
 
-    if visibles['Suelo']: dibujar_formas_relleno([f.suelo for f in resultado.filas], '#eaf5ea', '#2ca02c')
-    if visibles['Agua']: dibujar_formas_relleno([f.agua for f in resultado.filas], '#cce5ff', '#0066cc', is_water=True)
-    if visibles['Sobrecarga']: dibujar_formas_relleno([f.carga for f in resultado.filas], '#ffe6cc', '#ff7f0e')
-    if visibles['Sismo']: dibujar_formas_relleno([f.sismo for f in resultado.filas], '#ffeded', '#d62728')
+    if visibles['Suelo']: dibujar_formas_relleno([f.suelo for f in resultado.filas], '#eaf5ea', '#2ca02c', draw_subdivisions=True)
+    if visibles['Agua']: dibujar_formas_relleno([f.agua for f in resultado.filas], '#cce5ff', '#0066cc', is_water=True, draw_subdivisions=True)
+    if visibles['Sobrecarga']: dibujar_formas_relleno([f.carga for f in resultado.filas], '#ffe6cc', '#ff7f0e', draw_subdivisions=False)
+    if visibles['Sismo']: dibujar_formas_relleno([f.sismo for f in resultado.filas], '#ffeded', '#d62728', draw_subdivisions=True)
 
     x_start_tot = max_x_bound * 1.15
     colores_comp = {'Suelo': '#2ca02c', 'Agua': '#0066cc', 'Sobrecarga': '#ff7f0e', 'Sismo': '#d62728'}
-    used_z = []
 
     sum_P, sum_M = 0.0, 0.0
     if visibles['Suelo']: sum_P += resultado.componentes['Suelo'][0]; sum_M += resultado.componentes['Suelo'][1]
@@ -240,32 +259,28 @@ def renderizar_presiones(ax, resultado, scale_z=1.0, scale_p=1.0, unidad_p="kPa"
             if not visibles.get(d.componente, True): continue
             if d.fuerza * scale_F < 0.05: continue
             
-            circle_num = chr(0x245f + d.id) if 1 <= d.id <= 20 else f"({d.id})"
+            circle_num = f"({d.id})"
+            
             z_c = d.z_centro * scale_z
             pc_scaled = d.p_centro * scale_p
             color_arrow = colores_comp.get(d.componente, 'gray')
             
             xc, zc_shape = transform(z_c, pc_scaled)
-            ax.text(xc, zc_shape, circle_num, ha='center', va='center', fontsize=11, color=color_arrow, bbox=t_box)
+            x_wall = x_muro(z_c)
             
-            z_arrow = z_c
-            for uz in used_z:
-                if abs(uz - z_arrow) < H_disp * 0.06: z_arrow += H_disp * 0.06
-            used_z.append(z_arrow)
-            x_wall = x_muro(z_arrow)
+            ax.annotate('', xy=(x_wall, z_c), xytext=(xc, zc_shape), arrowprops=dict(arrowstyle='->', color=color_arrow, lw=1.5, alpha=0.9))
             
-            # Línea pura de acción parcial, sin el texto superpuesto
-            ax.annotate('', xy=(x_wall, z_arrow), xytext=(x_start_tot * 0.7, z_arrow), arrowprops=dict(arrowstyle='->', color=color_arrow, lw=1.2, alpha=0.9))
+            ax.text(xc, zc_shape, circle_num, ha='center', va='center', fontsize=10, color=color_arrow, bbox=t_box)
                     
         if sum_P * scale_F > 0.05:
             Y_T = (sum_M / sum_P) * scale_z
             z_T = H_disp - Y_T
             x_wall = x_muro(z_T)
             
-            ax.annotate('', xy=(x_wall, z_T), xytext=(x_start_tot * 1.35, z_T), arrowprops=dict(facecolor='#cc0000', edgecolor='#cc0000', width=2.5, headwidth=8))
+            ax.annotate('', xy=(x_wall, z_T), xytext=(x_start_tot * 1.25, z_T), arrowprops=dict(facecolor='#cc0000', edgecolor='#cc0000', width=2.5, headwidth=8))
             
             lbl_title = "E_TOTAL" if all([v for k, v in visibles.items() if k != 'Vectores']) else "E_PARCIAL"
-            ax.text(x_start_tot * 1.38, z_T, f"{lbl_title} = {sum_P*scale_F:.2f} {unidad_F}\ny_T = {Y_T:.2f} {unidad_z}", 
+            ax.text(x_start_tot * 1.28, z_T, f"{lbl_title} = {sum_P*scale_F:.2f} {unidad_F}\ny_T = {Y_T:.2f} {unidad_z}", 
                     va='top', ha='left', color='#cc0000', fontweight='bold', fontsize=9, bbox=t_box)
             ax.set_xlim(min(0, -max_x_bound * 0.1), max_x_bound * 2.2)
         else:
@@ -287,4 +302,4 @@ def renderizar_presiones(ax, resultado, scale_z=1.0, scale_p=1.0, unidad_p="kPa"
     ax.set_xlabel(f"Presión horizontal ({unidad_p})", fontsize=9)
     ax.set_ylabel(f"Profundidad z ({unidad_z})", fontsize=9)
     ax.set_xticks([])
-    ax.set_title("Esfuerzos Horizontales Analíticos", fontweight='bold', fontsize=10)
+    ax.set_title(titulo_custom, fontweight='bold', fontsize=10)

@@ -1,9 +1,8 @@
 """
 Módulo Principal de Interfaz Gráfica (GUI) - Tkinter.
 Avanzado: 
-- Auto-Filtro Inteligente de Capas Visuales: Deshabilita y apaga 
-  automáticamente los botones de la gráfica si su fuerza resultante es 0.
-- Evaluador Matemático Estilo Excel.
+- Gestor de Unidades Desacoplado (L, F, P, Gamma).
+- Renderizado en segundo plano para capas individuales.
 """
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
@@ -19,7 +18,7 @@ from graficos import renderizar_perfil, renderizar_presiones
 class Aplicacion(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title('Empujes laterales | Grupo 2')
+        self.title('Empujes laterales | Ingeniería civil')
         self.geometry('1350x780') 
         self.minsize(1100, 650)
         
@@ -35,13 +34,21 @@ class Aplicacion(tk.Tk):
         
         self.uni_L = tk.StringVar(value='m')
         self.uni_F = tk.StringVar(value='kN')
+        self.uni_P = tk.StringVar(value='kPa')
+        self.uni_Gamma = tk.StringVar(value='kN/m³')
         
         self.map_L = {'m': 1.0, 'cm': 0.01, 'mm': 0.001, 'ft': 0.3048, 'in': 0.0254}
         self.map_F = {'kN': 1.0, 'MN': 1000.0, 'N': 0.001, 'tonf': 9.80665, 'kgf': 0.00980665, 'lbf': 0.00444822, 'kip': 4.44822}
-        self.map_P_out = {
+        self.map_P = {
             'kPa': 1.0, 'MPa': 1000.0, 'Pa': 0.001, 'atm': 101.325, 'bar': 100.0,
             'tonf/m²': 9.80665, 'kgf/cm²': 98.0665, 'kgf/m²': 0.00980665,
-            'psf': 0.0478803, 'ksf': 47.8803, 'psi': 6.89476
+            'psf': 0.0478803, 'ksf': 47.8803, 'psi': 6.89476,
+            'kN/m²': 1.0, 'MN/m²': 1000.0, 'N/m²': 0.001
+        }
+        self.map_Gamma = {
+            'kN/m³': 1.0, 'MN/m³': 1000.0, 'N/m³': 0.001,
+            'tonf/m³': 9.80665, 'kgf/m³': 0.00980665, 'kgf/cm³': 9806.65,
+            'g/cm³': 9.80665, 'lbf/ft³ (pcf)': 0.157147, 'kip/ft³ (kcf)': 157.147
         }
         
         self._menu_superior()
@@ -241,7 +248,10 @@ class Aplicacion(tk.Tk):
     def _toggle_metodo(self, event=None):
         cols = ['#','h','γ','γsat','φ′ (°)','c′','δ (°)']
         if hasattr(self, 'tabla_e'):
-            self.tabla_e.configure(displaycolumns=cols[:-1] if self.metodo.get() in ['Rankine', 'Jaky'] else cols)
+            vis_cols = cols[:-1] if self.metodo.get() in ['Rankine', 'Jaky'] else cols
+            self.tabla_e.configure(displaycolumns=vis_cols)
+            for c in vis_cols:
+                self.tabla_e.column(c, width=100, minwidth=50, stretch=True, anchor='center')
             self._actualizar_grafico_muro()
 
     def _cambio_tipo_muro(self, event=None):
@@ -261,7 +271,9 @@ class Aplicacion(tk.Tk):
     def _tabla(self, parent, cols, height=9):
         f = ttk.Frame(parent); f.pack(fill='both', expand=True, pady=8)
         t = ttk.Treeview(f, columns=cols, show='headings', height=height, selectmode='extended')
-        for col in cols: t.heading(col, text=col); t.column(col, width=110, anchor='center', stretch=True)
+        for col in cols: 
+            t.heading(col, text=col)
+            t.column(col, width=100, minwidth=50, anchor='center', stretch=True)
         s = ttk.Scrollbar(f, orient='vertical', command=t.yview); t.configure(yscroll=s.set)
         t.pack(side='left', fill='both', expand=True); s.pack(side='right', fill='y')
         return t
@@ -353,18 +365,13 @@ class Aplicacion(tk.Tk):
         
         def guardar_edicion(evt=None):
             if not editor.winfo_exists(): return
-            
-            val = self._eval_math(editor.get())
-            nuevo_val = f"{val:.3f}"
-                
+            nuevo_val = f"{self._eval_math(editor.get()):.3f}"
             valores = list(tree.item(item_id, 'values'))
             valores[col_idx] = nuevo_val
             
             if col_idx == 1:
                 tags = list(tree.item(item_id, 'tags'))
-                if 'locked' not in tags:
-                    tags.append('locked')
-                    tree.item(item_id, tags=tags)
+                if 'locked' not in tags: tags.append('locked'); tree.item(item_id, tags=tags)
                 
             tree.item(item_id, values=valores); editor.destroy()
             if col_idx == 1: self._recalcular_estratos()
@@ -382,6 +389,12 @@ class Aplicacion(tk.Tk):
         if not seleccionados: return
         for item_id in seleccionados: self.tabla_e.delete(item_id)
         self._renumerar(); self._recalcular_estratos()
+
+    def _renumerar(self):
+        for j, item_id in enumerate(self.tabla_e.get_children(), 1):
+            v = list(self.tabla_e.item(item_id, 'values'))
+            v[0] = j
+            self.tabla_e.item(item_id, values=v)
 
     def _cargas(self):
         botones = ttk.Frame(self.cargas_tab)
@@ -487,7 +500,7 @@ class Aplicacion(tk.Tk):
         self.resumen = ttk.Label(arriba, text='Calcula el caso para ver resultados.', style='Head.TLabel'); self.resumen.pack(side='left')
         
         ttk.Label(arriba, text="  |  Presión gráfica de salida:").pack(side='left', padx=(15, 2))
-        self.cb_unidad_res = ttk.Combobox(arriba, values=['Misma que entrada'] + list(self.map_P_out.keys()), state='readonly', width=16)
+        self.cb_unidad_res = ttk.Combobox(arriba, values=['Misma que entrada'] + list(self.map_P.keys()), state='readonly', width=16)
         self.cb_unidad_res.set('Misma que entrada')
         self.cb_unidad_res.pack(side='left'); self.cb_unidad_res.bind('<<ComboboxSelected>>', lambda e: self._actualizar_resultados_por_unidad())
 
@@ -509,18 +522,36 @@ class Aplicacion(tk.Tk):
         self.tabla_r.pack(side='left', fill='both', expand=True); s.pack(side='right', fill='y')
 
     def _config_unidades(self):
-        dlg = tk.Toplevel(self); dlg.title("Unidades de Entrada"); dlg.geometry("380x250")
+        dlg = tk.Toplevel(self); dlg.title("Unidades de Entrada"); dlg.geometry("380x380")
         dlg.transient(self); dlg.grab_set()
         
-        ttk.Label(dlg, text="1. Elija Unidad de Longitud:", font=('Segoe UI', 9, 'bold')).pack(pady=(15,2))
+        ttk.Label(dlg, text="1. Longitud:", font=('Segoe UI', 9, 'bold')).pack(pady=(10,2))
         cb_L = ttk.Combobox(dlg, textvariable=self.uni_L, values=list(self.map_L.keys()), state='readonly'); cb_L.pack()
         
-        ttk.Label(dlg, text="2. Elija Unidad de Fuerza:", font=('Segoe UI', 9, 'bold')).pack(pady=(15,2))
+        ttk.Label(dlg, text="2. Fuerza:", font=('Segoe UI', 9, 'bold')).pack(pady=(10,2))
         cb_F = ttk.Combobox(dlg, textvariable=self.uni_F, values=list(self.map_F.keys()), state='readonly'); cb_F.pack()
         
-        def guardar():
+        ttk.Label(dlg, text="3. Presión / Esfuerzo (c', q, gráfica):", font=('Segoe UI', 9, 'bold')).pack(pady=(10,2))
+        cb_P = ttk.Combobox(dlg, textvariable=self.uni_P, values=list(self.map_P.keys()), state='readonly'); cb_P.pack()
+        
+        ttk.Label(dlg, text="4. Peso Específico (γ):", font=('Segoe UI', 9, 'bold')).pack(pady=(10,2))
+        cb_Gamma = ttk.Combobox(dlg, textvariable=self.uni_Gamma, values=list(self.map_Gamma.keys()), state='readonly'); cb_Gamma.pack()
+        
+        def _sugerir_unidades(event):
             L, F = self.uni_L.get(), self.uni_F.get()
-            fpe = self.map_F[F] / (self.map_L[L]**3)
+            p_sug, g_sug = f"{F}/{L}²", f"{F}/{L}³"
+            if p_sug == "kN/m²": p_sug = "kPa"
+            elif p_sug == "MN/m²": p_sug = "MPa"
+            elif p_sug == "N/m²": p_sug = "Pa"
+            
+            if p_sug in self.map_P: self.uni_P.set(p_sug)
+            if g_sug in self.map_Gamma: self.uni_Gamma.set(g_sug)
+
+        cb_L.bind('<<ComboboxSelected>>', _sugerir_unidades)
+        cb_F.bind('<<ComboboxSelected>>', _sugerir_unidades)
+        
+        def guardar():
+            fpe = self.map_Gamma[self.uni_Gamma.get()]
             self.gamma_agua.set(f"{9.80665 / fpe:.4f}".rstrip('0').rstrip('.'))
             self._actualizar_textos_unidades()
             dlg.destroy()
@@ -529,19 +560,19 @@ class Aplicacion(tk.Tk):
         
     def _actualizar_textos_unidades(self):
         L, F = self.uni_L.get(), self.uni_F.get()
-        p_esp, p_sup = f'{F}/{L}³', f'{F}/{L}²'
+        P, Gamma = self.uni_P.get(), self.uni_Gamma.get()
         
-        self.lbl_unidades_sub.config(text=f'Sistema Activo: Longitud en [{L}] y Fuerzas en [{F}]')
+        self.lbl_unidades_sub.config(text=f'Sistema Activo: L [{L}] | F [{F}] | Esf. [{P}] | γ [{Gamma}]')
         self.lbl_b.config(text=f'Ancho de base B ({L})')
         self.lbl_e.config(text=f'Espesor pantalla ({L})')
         self.lbl_altura.config(text=f'Altura total H ({L})')
         self.lbl_nf.config(text=f'NF ({L})')
-        self.lbl_g_agua.config(text=f'γagua ({p_esp})')
+        self.lbl_g_agua.config(text=f'γagua ({Gamma})')
         
         self.tabla_e.heading('h', text=f'h ({L})')
-        self.tabla_e.heading('γ', text=f'γ ({p_esp})')
-        self.tabla_e.heading('γsat', text=f'γsat ({p_esp})')
-        self.tabla_e.heading('c′', text=f'c′ ({p_sup})')
+        self.tabla_e.heading('γ', text=f'γ ({Gamma})')
+        self.tabla_e.heading('γsat', text=f'γsat ({Gamma})')
+        self.tabla_e.heading('c′', text=f'c′ ({P})')
         
         if hasattr(self, 'lbl_col_a'):
             self.lbl_col_a.config(text=f"a ({L})")
@@ -558,10 +589,10 @@ class Aplicacion(tk.Tk):
         
         out_p_sel = self.cb_unidad_res.get()
         if out_p_sel == 'Misma que entrada':
-            fp_out = fF / (fl**2)
-            lbl_p = f"{F}/{L}²"
+            fp_out = self.map_P[self.uni_P.get()]
+            lbl_p = self.uni_P.get()
         else:
-            fp_out = self.map_P_out[out_p_sel]
+            fp_out = self.map_P[out_p_sel]
             lbl_p = out_p_sel
             
         lbl_F_L = f"{F}/{L}"; lbl_M = f"{F}·{L}/{L}"
@@ -580,7 +611,10 @@ class Aplicacion(tk.Tk):
             if d.fuerza * scale_P_lineal > 0.005:
                 F_val = d.fuerza * scale_P_lineal
                 y_val = d.y_base * scale_z
-                circle_num = chr(0x245f + d.id) if 1 <= d.id <= 20 else f"({d.id})"
+                
+                # --- FORMATO DE NÚMEROS LIMPIO ---
+                circle_num = f"({d.id})"
+                
                 self.componentes.insert('', 'end', values=[f" {circle_num} {d.componente} ({d.forma})", f'{F_val:.3f}', f'{y_val:.3f}'])
 
         self.componentes.insert('', 'end', values=['---------------------------------------', '---------', '---------'])
@@ -651,7 +685,8 @@ class Aplicacion(tk.Tk):
     def _calcular(self):
         try:
             fl, fF = self.map_L[self.uni_L.get()], self.map_F[self.uni_F.get()]
-            fpe, fp = fF / (fl**3), fF / (fl**2)
+            fp = self.map_P[self.uni_P.get()]
+            fpe = self.map_Gamma[self.uni_Gamma.get()]
 
             estratos_si = []
             for id in self.tabla_e.get_children():
@@ -675,7 +710,6 @@ class Aplicacion(tk.Tk):
             )
             self.resultado = resolver(caso_si)
             
-            # --- AUTO-FILTRO INTELIGENTE DE CAPAS VISUALES ---
             c = self.resultado.componentes
             
             v_suelo = c['Suelo'][0] > 1e-5
@@ -717,15 +751,54 @@ class Aplicacion(tk.Tk):
             try:
                 L, F = self.uni_L.get(), self.uni_F.get()
                 fl, fF = self.map_L[L], self.map_F[F]
+                
                 out_p_sel = self.cb_unidad_res.get()
+                if out_p_sel == 'Misma que entrada':
+                    fp_out = self.map_P[self.uni_P.get()]
+                    lbl_p = self.uni_P.get()
+                else:
+                    fp_out = self.map_P[out_p_sel]
+                    lbl_p = out_p_sel
+                    
+                scale_z = 1.0/fl
+                scale_p = 1.0/fp_out
+                scale_P_lineal = 1.0 / (fF / fl)
+                lbl_F_L = f"{F}/{L}"
                 
-                fp_out = fF/(fl**2) if out_p_sel == 'Misma que entrada' else self.map_P_out[out_p_sel]
-                lbl_p = f"{F}/{L}²" if out_p_sel == 'Misma que entrada' else out_p_sel
+                scale_gamma = 1.0 / self.map_Gamma[self.uni_Gamma.get()]
+                lbl_gamma = self.uni_Gamma.get()
                 
-                png_path = path.replace('.csv', '.png')
-                self.fig_resul.savefig(png_path, dpi=200, bbox_inches='tight') 
+                rutas_png = {}
+                png_main = path.replace('.csv', '.png')
+                self.fig_resul.savefig(png_main, dpi=200, bbox_inches='tight') 
+                rutas_png['principal'] = png_main
                 
-                archivos = exportar(self.resultado, path, png_path, 1.0/fl, 1.0/fp_out, L, lbl_p)
+                from matplotlib.figure import Figure
+                from matplotlib.backends.backend_agg import FigureCanvasAgg
+                
+                c_res = self.resultado.componentes
+                capas = [
+                    ('Suelo', 'Suelo', c_res['Suelo'][0], 'Esfuerzos Analíticos - Aislado: Suelo'),
+                    ('Agua', 'Agua', c_res['Agua'][0], 'Esfuerzos Analíticos - Aislado: Agua'),
+                    ('Sobrecarga', 'Sobrecarga', c_res['Sobrecarga'][0], 'Esfuerzos Analíticos - Aislado: Sobrecargas'),
+                    ('Sismo', 'Incremento sísmico', c_res['Incremento sísmico'][0], 'Esfuerzos Analíticos - Aislado: Sismo')
+                ]
+                
+                for clave_vis, clave_comp, magnitud, titulo in capas:
+                    if magnitud * scale_P_lineal > 1e-5:
+                        fig_tmp = Figure(figsize=(5, 4), dpi=200, tight_layout=True)
+                        canvas_tmp = FigureCanvasAgg(fig_tmp)
+                        ax_tmp = fig_tmp.add_subplot(111)
+                        
+                        vis_aislado = {'Suelo': False, 'Agua': False, 'Sobrecarga': False, 'Sismo': False, 'Vectores': True}
+                        vis_aislado[clave_vis] = True
+                        
+                        renderizar_presiones(ax_tmp, self.resultado, scale_z, scale_p, lbl_p, L, scale_P_lineal, lbl_F_L, vis_aislado, titulo)
+                        path_aislado = path.replace('.csv', f'_{clave_vis.lower()}.png')
+                        fig_tmp.savefig(path_aislado, bbox_inches='tight')
+                        rutas_png[clave_vis.lower()] = path_aislado
+                
+                archivos = exportar(self.resultado, path, rutas_png, scale_z, scale_p, scale_gamma, L, lbl_p, lbl_gamma)
                 messagebox.showinfo('Reporte Generado', '\n'.join(map(str, archivos)))
             except OSError as exc: messagebox.showerror('Error', str(exc))
 
@@ -735,7 +808,11 @@ class Aplicacion(tk.Tk):
         for v, x in ((self.altura, 5.0), (self.beta, 90), (self.alpha, 0), (self.kh, 0), (self.kv, 0), (self.nf, 0), (self.b_base, 2.0), (self.e_pantalla, 0.5)):
             v.set(str(x))
             
-        fpe = self.map_F[self.uni_F.get()] / (self.map_L[self.uni_L.get()]**3)
+        self.uni_L.set('m')
+        self.uni_F.set('kN')
+        self.uni_P.set('kPa')
+        self.uni_Gamma.set('kN/m³')
+        fpe = self.map_Gamma[self.uni_Gamma.get()]
         self.gamma_agua.set(f"{9.80665 / fpe:.4f}".rstrip('0').rstrip('.')) 
         
         self.cond.set('activa'); self._cambio_condicion()  
@@ -755,7 +832,7 @@ class Aplicacion(tk.Tk):
 
     def _guardar_proyecto(self):
         datos = {
-            "unidades": {"L": self.uni_L.get(), "F": self.uni_F.get(), "out_P": self.cb_unidad_res.get()},
+            "unidades": {"L": self.uni_L.get(), "F": self.uni_F.get(), "P": self.uni_P.get(), "Gamma": self.uni_Gamma.get(), "out_P": self.cb_unidad_res.get()},
             "general": {
                 "tipo_muro": self.tipo_muro.get(), "modo_muro": self.modo_muro.get(),
                 "b_base": self.b_base.get(), "e_pantalla": self.e_pantalla.get(),
@@ -778,7 +855,9 @@ class Aplicacion(tk.Tk):
             
             uni = datos.get("unidades", {})
             self.uni_L.set(uni.get("L", "m")); self.uni_F.set(uni.get("F", "kN"))
-            self._actualizar_textos_unidades(); self.cb_unidad_res.set(uni.get("out_P", "Misma que entrada"))
+            self.uni_P.set(uni.get("P", "kPa")); self.uni_Gamma.set(uni.get("Gamma", "kN/m³"))
+            self._actualizar_textos_unidades()
+            self.cb_unidad_res.set(uni.get("out_P", "Misma que entrada"))
             
             gen = datos.get("general", {})
             self.tipo_muro.set(gen.get("tipo_muro", "Rectangular")); self.modo_muro.set(gen.get("modo_muro", "Genérico"))

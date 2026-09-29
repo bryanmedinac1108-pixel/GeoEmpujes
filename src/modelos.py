@@ -1,7 +1,7 @@
 """
 Módulo de Modelos de Datos.
-Incorpora campos para almacenar las variables geométricas base (p_calc y h_tramo)
-y así poder imprimir las fórmulas de áreas explícitamente en el PDF.
+Incorpora campos para el almacenamiento separado de cargas infinitas y finitas,
+permitiendo dibujar el bulbo curvo de Boussinesq sin alterar la integración de Jarquio.
 """
 from dataclasses import dataclass, field
 from typing import List, Optional, Dict
@@ -47,6 +47,7 @@ class FilaResultado:
     carga: float      
     sismo: float      
     total: float      
+    carga_inf: float = 0.0  # Nuevo campo para aislar cargas uniformes de las finitas
 
 @dataclass
 class AreaDetalle:
@@ -57,8 +58,8 @@ class AreaDetalle:
     z_centro: float   
     y_base: float     
     p_centro: float   
-    p_calc: float = 0.0  # Presión base para la fórmula visual
-    h_tramo: float = 0.0 # Altura geométrica para la fórmula visual
+    p_calc: float = 0.0  
+    h_tramo: float = 0.0 
 
 @dataclass
 class Resultado:
