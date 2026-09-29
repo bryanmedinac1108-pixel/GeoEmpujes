@@ -19,7 +19,7 @@ from graficos import renderizar_perfil, renderizar_presiones
 class Aplicacion(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title('Empujes laterales | Ingeniería civil')
+        self.title('Empujes laterales | Grupo 2')
         self.geometry('1350x780') 
         self.minsize(1100, 650)
         
