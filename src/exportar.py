@@ -1,13 +1,21 @@
 """
 Módulo de Exportación de Resultados.
-Genera el registro CSV continuo y una verdadera Memoria de Cálculo en PDF.
+Genera el registro CSV continuo y una Memoria de Cálculo en PDF,
+con la vista general y el desglose de todas las capas aisladas en la Sección 7.
 """
 import csv
 import os
+import math
+from calculo import calcular_K_dinamico
 
 def exportar(resultado, ruta_csv, rutas_png, scale_z=1.0, scale_p=1.0, scale_gamma=1.0, lbl_z="m", lbl_p="kPa", lbl_gamma="kN/m³"):
     archivos_generados = []
     
+    # Soporta tanto string directo como diccionario de imágenes
+    if isinstance(rutas_png, str):
+        rutas_png = {'principal': rutas_png}
+    
+    # 1. GENERACIÓN DEL CSV 
     with open(ruta_csv, mode='w', newline='', encoding='utf-8') as f:
         writer = csv.writer(f, delimiter=';')
         writer.writerow([f'z ({lbl_z})', 'Estrato', f'Sigma_v ({lbl_p})', 'K', 
@@ -21,6 +29,7 @@ def exportar(resultado, ruta_csv, rutas_png, scale_z=1.0, scale_p=1.0, scale_gam
             ])
     archivos_generados.append(ruta_csv)
     
+    # 2. GENERACIÓN DE LA MEMORIA DE CÁLCULO EN PDF
     try:
         from reportlab.lib.pagesizes import A4
         from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image as RLImage, Table, TableStyle, PageBreak
@@ -46,10 +55,14 @@ def exportar(resultado, ruta_csv, rutas_png, scale_z=1.0, scale_p=1.0, scale_gam
         lbl_M = f"{lbl_p}·{lbl_z}²"
         scale_F = scale_p * scale_z
         
+        # PORTADA Y TÍTULO
         story.append(Paragraph("MEMORIA DE CÁLCULO GEOTÉCNICO", st_title))
         story.append(Paragraph("Análisis de Empujes Laterales (Paso a Paso)", st_subtitle))
         story.append(Spacer(1, 15))
         
+        # =========================================================
+        # SECCIÓN 1: DATOS DE PARTIDA
+        # =========================================================
         story.append(Paragraph("1. DATOS DE PARTIDA", st_h1))
         story.append(Paragraph("1.1 Parámetros Generales y Geometría", st_h2))
         
@@ -86,22 +99,51 @@ def exportar(resultado, ruta_csv, rutas_png, scale_z=1.0, scale_p=1.0, scale_gam
         story.append(t_est)
         story.append(Spacer(1, 15))
 
+        # =========================================================
+        # SECCIÓN 2: CÁLCULO DE COEFICIENTES (K)
+        # =========================================================
         story.append(Paragraph("2. CÁLCULO DE COEFICIENTES (K)", st_h1))
-        story.append(Paragraph(f"El análisis se realiza mediante la teoría de <b>{c.metodo.upper()}</b> en condición <b>{c.condicion.upper()}</b>.", st_body))
-        
+        story.append(Paragraph(f"El análisis estático se realiza mediante <b>{c.metodo.upper()}</b> en condición <b>{c.condicion.upper()}</b>.", st_body))
+        hay_sismo = abs(c.kh) > 1e-12 or abs(c.kv) > 1e-12
+        if hay_sismo:
+            theta_s = math.degrees(math.atan2(c.kh, 1.0-c.kv))
+            story.append(Paragraph(
+                f"Para la condición sísmica se emplea <b>Mononobe-Okabe</b>, con θ = atan[kh/(1-kv)] = <b>{theta_s:.4f}°</b>. "
+                "La formulación se aplica al suelo granular (c'=0) y el agua se considera por separado.", st_body))
+
         for i, est in enumerate(c.estratos):
             k_val = next((f.k for f in resultado.filas if f.estrato == i+1), 0.0)
             story.append(Paragraph(f"<b>Estrato {i+1}</b> (φ' = {est.phi}°, δ = {est.delta}°):", st_body))
             if c.condicion == 'reposo':
-                story.append(Paragraph(f"<b>Reemplazo:</b> K_0 = 1 - sen({est.phi}°) = <b>{k_val:.5f}</b>", st_formula))
+                story.append(Paragraph(f"<b>Jaky:</b> K0 = 1 - sen({est.phi}°) = <b>{k_val:.5f}</b>", st_formula))
             elif c.metodo == 'Coulomb' and c.condicion == 'activa':
-                story.append(Paragraph(f"<b>Reemplazo:</b> K_a = sen²({c.beta}°+{est.phi}°) / [ sen²({c.beta}°) · sen({c.beta}°-{est.delta}°) · ( 1 + √[ (sen({est.phi}°+{est.delta}°)·sen({est.phi}°-{c.alpha}°)) / (sen({c.beta}°-{est.delta}°)·sen({c.beta}°+{c.alpha}°)) ] )² ] = <b>{k_val:.5f}</b>", st_formula))
-            elif c.metodo == 'Rankine' and c.condicion == 'activa':
-                story.append(Paragraph(f"<b>Reemplazo:</b> K_a = cos({c.alpha}°) · [ cos({c.alpha}°) - √(cos²({c.alpha}°) - cos²({est.phi}°)) ] / [ cos({c.alpha}°) + √(cos²({c.alpha}°) - cos²({est.phi}°)) ] = <b>{k_val:.5f}</b>", st_formula))
+                story.append(Paragraph(f"<b>Coulomb activo:</b> Ka = sen²({c.beta}°+{est.phi}°) / [sen²({c.beta}°)·sen({c.beta}°-{est.delta}°)·(1 + √[(sen({est.phi}°+{est.delta}°)·sen({est.phi}°-{c.alpha}°))/(sen({c.beta}°-{est.delta}°)·sen({c.beta}°+{c.alpha}°))])²] = <b>{k_val:.5f}</b>", st_formula))
+            elif c.metodo == 'Coulomb' and c.condicion == 'pasiva':
+                story.append(Paragraph(f"<b>Coulomb pasivo:</b> Kp = sen²({c.beta}°-{est.phi}°) / [sen²({c.beta}°)·sen({c.beta}°+{est.delta}°)·(1 - √[(sen({est.phi}°+{est.delta}°)·sen({est.phi}°+{c.alpha}°))/(sen({c.beta}°+{est.delta}°)·sen({c.beta}°+{c.alpha}°))])²] = <b>{k_val:.5f}</b>", st_formula))
+            elif c.metodo == 'Rankine':
+                signo = '-' if c.condicion == 'activa' else '+'
+                signo_den = '+' if c.condicion == 'activa' else '-'
+                story.append(Paragraph(f"<b>Rankine {c.condicion}:</b> K = cos({c.alpha}°)·[cos({c.alpha}°) {signo} √(cos²({c.alpha}°)-cos²({est.phi}°))]/[cos({c.alpha}°) {signo_den} √(cos²({c.alpha}°)-cos²({est.phi}°))] = <b>{k_val:.5f}</b>", st_formula))
+
+            if hay_sismo and c.condicion in ('activa','pasiva'):
+                ke = calcular_K_dinamico(est.phi, c.alpha, c.beta, est.delta, c.kh, c.kv)
+                ke_eq = (1.0-c.kv)*ke
+                nombre_ke = 'KAE' if c.condicion == 'activa' else 'KPE'
+                story.append(Paragraph(f"<b>Mononobe-Okabe:</b> {nombre_ke} = <b>{ke:.5f}</b>; coeficiente equivalente (1-kv){nombre_ke} = <b>{ke_eq:.5f}</b>", st_formula))
             story.append(Spacer(1, 10))
 
+        if c.cargas:
+            story.append(Paragraph("2.1 Formulación de sobrecargas", st_h2))
+            story.append(Paragraph(
+                "<b>Uniforme:</b> Δσh = K·q.<br/>"
+                "<b>Franja finita:</b> Integrada según Jarquio (1981) y perfil continuo de Boussinesq modificado.<br/>"
+                "<b>Lineal / Puntual:</b> Formulación de elasticidad para muro vertical y relleno horizontal.", st_body))
+
+        # =========================================================
+        # SECCIÓN 3: ESFUERZOS LATERALES (PASO A PASO)
+        # =========================================================
         story.append(Paragraph("3. CÁLCULO DE ESFUERZOS LATERALES", st_h1))
-        story.append(Paragraph(f"Se evalúan las profundidades críticas aplicando: <b>σ_h = σ'_v × K</b>", st_body))
+        story.append(Paragraph("Se evalúan las profundidades críticas usando esfuerzo vertical efectivo. La presión del agua se suma por separado como u = γw·hw.", st_body))
         
         criticos = []
         for i, f in enumerate(resultado.filas):
@@ -125,35 +167,53 @@ def exportar(resultado, ruta_csv, rutas_png, scale_z=1.0, scale_p=1.0, scale_gam
             
             est = c.estratos[f.estrato-1]
             c_val = est.cohesion * scale_p
-            if c_val > 0:
-                detalles_txt += f"<font color='#444444'>Presión lateral activa:</font> σ_h = {sv_s:.2f} × {f.k:.3f} - 2({c_val:.2f})√{f.k:.3f} = <b>{sh_s:.2f} {lbl_p}</b><br/>"
+            if c_val > 0 and c.condicion == 'activa':
+                detalles_txt += f"<font color='#444444'>Presión lateral activa:</font> σh = {sv_s:.2f}×{f.k:.3f} - 2({c_val:.2f})√{f.k:.3f} = <b>{sh_s:.2f} {lbl_p}</b><br/>"
+            elif c_val > 0 and c.condicion == 'pasiva':
+                detalles_txt += f"<font color='#444444'>Presión lateral pasiva:</font> σh = {sv_s:.2f}×{f.k:.3f} + 2({c_val:.2f})√{f.k:.3f} = <b>{sh_s:.2f} {lbl_p}</b><br/>"
             else:
-                detalles_txt += f"<font color='#444444'>Presión lateral activa:</font> σ_h = {sv_s:.2f} × {f.k:.3f} = <b>{sh_s:.2f} {lbl_p}</b><br/>"
-                
-            if f.agua > 0: detalles_txt += f"<font color='#444444'>Presión de poros:</font> u = <b>{f.agua * scale_p:.2f} {lbl_p}</b><br/>"
+                detalles_txt += f"<font color='#444444'>Presión lateral del suelo:</font> σh = {sv_s:.2f}×{f.k:.3f} = <b>{sh_s:.2f} {lbl_p}</b><br/>"
+
+            if f.agua > 0:
+                detalles_txt += f"<font color='#444444'>Presión de poros:</font> u = <b>{f.agua * scale_p:.2f} {lbl_p}</b><br/>"
+            if abs(f.carga) > 1e-10:
+                detalles_txt += f"<font color='#444444'>Sobrecargas:</font> Δσh,q = <b>{f.carga * scale_p:.2f} {lbl_p}</b><br/>"
+            if abs(f.sismo) > 1e-10:
+                detalles_txt += f"<font color='#444444'>Incremento sísmico:</font> Δσh,E = <b>{f.sismo * scale_p:.2f} {lbl_p}</b><br/>"
             story.append(Paragraph(detalles_txt, st_indent))
             story.append(Spacer(1, 4))
             
         story.append(Spacer(1, 10))
 
+        # =========================================================
+        # SECCIÓN 4: CÁLCULO DEL EMPUJE TOTAL (ÁREAS)
+        # =========================================================
         story.append(Paragraph("4. CÁLCULO DEL EMPUJE TOTAL (Áreas Geométricas)", st_h1))
-        story.append(Paragraph("El empuje total es la suma de las áreas del diagrama de presiones. Las fórmulas aplicadas son (Base × Altura) para rectángulos y (Base × Altura / 2) para triángulos:", st_body))
+        story.append(Paragraph("El empuje total se obtiene integrando el diagrama de presiones. Los tramos lineales se descomponen en rectángulos y triángulos; los diagramas no lineales de sobrecargas localizadas se integran numéricamente mediante trapecios.", st_body))
         
         for d in resultado.detalles:
-            if d.fuerza * scale_F > 0.005:
+            if abs(d.fuerza * scale_F) > 0.005:
                 f_val, h_s, p1_s = d.fuerza * scale_F, d.h_tramo * scale_z, d.p_calc * scale_p
-                f_str = f"({p1_s:.2f} × {h_s:.2f}) / 2" if d.forma == 'Triángulo' else f"{p1_s:.2f} × {h_s:.2f}"
                 
-                # --- FORMATO DE NÚMEROS LIMPIO ---
+                if d.forma == 'Triángulo':
+                    f_str = f"({p1_s:.2f} × {h_s:.2f}) / 2"
+                elif d.forma == 'Rectángulo':
+                    f_str = f"{p1_s:.2f} × {h_s:.2f}"
+                else:
+                    f_str = f"Fórmula analítica ({d.forma})"
                 circle_num = f"E{d.id}"
+
                 story.append(Paragraph(f"<b>• Área {circle_num} ({d.componente} - {d.forma}):</b> {f_str} = <b>{f_val:.2f} {lbl_F}</b>", st_indent))
                 
         story.append(Spacer(1, 15))
 
+        # =========================================================
+        # SECCIÓN 5: TOTALES
+        # =========================================================
         story.append(Paragraph("5. RESUMEN DE COMPONENTES", st_h1))
         datos_res = [["Fuerza Agrupada", f"Fuerza P ({lbl_F})", f"Momento M ({lbl_M})", f"Brazo y ({lbl_z})"]]
         for comp, vals in resultado.componentes.items():
-            if vals[0] * scale_F > 0.005:
+            if abs(vals[0] * scale_F) > 0.005:
                 datos_res.append([comp, f"{vals[0]*scale_F:.3f}", f"{vals[1]*scale_F*scale_z:.3f}", f"{vals[2]*scale_z:.3f}"])
         datos_res.append(["SUMATORIA TOTAL", f"{resultado.total*scale_F:.3f}", f"{resultado.momento*scale_F*scale_z:.3f}", f"{resultado.y*scale_z:.3f}"])
         
@@ -163,7 +223,10 @@ def exportar(resultado, ruta_csv, rutas_png, scale_z=1.0, scale_p=1.0, scale_gam
         
         story.append(PageBreak())
 
-        story.append(Paragraph("6. DIAGRAMA DE ESFUERZOS HORIZONTALES (VISTA GENERAL)", st_h1))
+        # =========================================================
+        # SECCIÓN 6: GRÁFICO (Nueva página)
+        # =========================================================
+        story.append(Paragraph("6. DIAGRAMA DE ESFUERZOS HORIZONTALES", st_h1))
         ruta_main = rutas_png.get('principal')
         if ruta_main and os.path.exists(ruta_main):
             story.append(RLImage(ruta_main, width=460, height=360))

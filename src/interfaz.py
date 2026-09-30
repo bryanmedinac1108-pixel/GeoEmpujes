@@ -1,16 +1,13 @@
 """
 Módulo Principal de Interfaz Gráfica (GUI) - Tkinter.
-Avanzado: 
-- Gestor de Unidades Desacoplado (L, F, P, Gamma).
-- Renderizado en segundo plano para capas individuales.
-- Límite de caracteres Unicode (1 a 10) para la tabla de resultados.
-- Auto-expansión dinámica de columnas en la tabla de estratos.
+Exportación completa de gráficas combinadas e individuales existentes en segundo plano.
 """
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 import json
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+from matplotlib.backends.backend_agg import FigureCanvasAgg
 
 from modelos import Caso, Carga, Estrato
 from calculo import resolver
@@ -231,7 +228,7 @@ class Aplicacion(tk.Tk):
         self.combo_metodo.grid(row=1, column=3, padx=6, sticky='w')
         self.combo_metodo.bind('<<ComboboxSelected>>', self._toggle_metodo)
 
-        f_sis = ttk.LabelFrame(scrollable_frame, text='3. Sismo (Mononobe-Okabe)', padding=15)
+        f_sis = ttk.LabelFrame(scrollable_frame, text="3. Sismo (Mononobe-Okabe; c' = 0)", padding=15)
         f_sis.pack(anchor='nw', fill='x', pady=5, padx=5)
 
         self.kh, _, _ = self._entry(f_sis, 0, 'kh (0 = estático)', 0, column=0)
@@ -253,7 +250,6 @@ class Aplicacion(tk.Tk):
             vis_cols = cols[:-1] if self.metodo.get() in ['Rankine', 'Jaky'] else cols
             self.tabla_e.configure(displaycolumns=vis_cols)
             for c in vis_cols:
-                # Se eliminó el parámetro width=100 para permitir auto-expansión horizontal.
                 self.tabla_e.column(c, minwidth=50, stretch=True, anchor='center')
             self._actualizar_grafico_muro()
 
@@ -276,7 +272,6 @@ class Aplicacion(tk.Tk):
         t = ttk.Treeview(f, columns=cols, show='headings', height=height, selectmode='extended')
         for col in cols: 
             t.heading(col, text=col)
-            # Se permite a Tkinter distribuir el espacio estirando cada columna equitativamente
             t.column(col, minwidth=50, anchor='center', stretch=True)
         s = ttk.Scrollbar(f, orient='vertical', command=t.yview); t.configure(yscroll=s.set)
         t.pack(side='left', fill='both', expand=True); s.pack(side='right', fill='y')
@@ -406,14 +401,20 @@ class Aplicacion(tk.Tk):
         ttk.Button(botones, text='+ Agregar sobrecarga', command=self._agregar_carga).pack(side='left', padx=3)
         ttk.Button(botones, text='Eliminar seleccionadas', command=self._eliminar_carga).pack(side='left', padx=3)
         ttk.Label(botones, text='(Shift+Clic en las casillas para rango múltiple)').pack(side='left', padx=15)
+
+        ttk.Label(
+            self.cargas_tab,
+            text="Unidades de magnitud: uniforme/franja = F/L²; lineal = F/L; puntual = F. a = distancia al muro; b = ancho de franja.",
+            foreground='#555555'
+        ).pack(side='top', anchor='w', pady=(0, 4))
         
         header = ttk.Frame(self.cargas_tab)
         header.pack(side='top', fill='x', pady=(5, 2))
         ttk.Label(header, text="Sel", width=4).grid(row=0, column=0, padx=2)
         ttk.Label(header, text="Tipo de Carga", width=15).grid(row=0, column=1, padx=2)
         ttk.Label(header, text="Magnitud", width=12).grid(row=0, column=2, padx=2)
-        self.lbl_col_a = ttk.Label(header, text="a (m)", width=12); self.lbl_col_a.grid(row=0, column=3, padx=2)
-        self.lbl_col_b = ttk.Label(header, text="B (m)", width=12); self.lbl_col_b.grid(row=0, column=4, padx=2)
+        self.lbl_col_a = ttk.Label(header, text="a (dist.)", width=12); self.lbl_col_a.grid(row=0, column=3, padx=2)
+        self.lbl_col_b = ttk.Label(header, text="b (ancho)", width=12); self.lbl_col_b.grid(row=0, column=4, padx=2)
         
         self.cargas_inner = ttk.Frame(self.cargas_tab)
         self.cargas_inner.pack(side="top", fill="both", expand=True)
@@ -580,7 +581,7 @@ class Aplicacion(tk.Tk):
         
         if hasattr(self, 'lbl_col_a'):
             self.lbl_col_a.config(text=f"a ({L})")
-            self.lbl_col_b.config(text=f"B ({L})")
+            self.lbl_col_b.config(text=f"b ({L})")
         
         self._actualizar_resultados_por_unidad()
 
@@ -612,7 +613,7 @@ class Aplicacion(tk.Tk):
         self.componentes.heading('y base', text=f'Brazo y ({L})')
         
         for d in r.detalles:
-            if abs(d.fuerza * scale_P_lineal) > 0.05:
+            if abs(d.fuerza * scale_P_lineal) > 0.005:
                 F_val = d.fuerza * scale_P_lineal
                 y_val = d.y_base * scale_z
                 circle_num = f"({d.id})"
@@ -621,7 +622,7 @@ class Aplicacion(tk.Tk):
         self.componentes.insert('', 'end', values=['---------------------------------------', '---------', '---------'])
         
         for nombre, vals in [*r.componentes.items(), ('GRAN TOTAL', (r.total, r.momento, r.y))]:
-            if abs(vals[0] * scale_P_lineal) > 0.05:
+            if abs(vals[0] * scale_P_lineal) > 0.005:
                 self.componentes.insert('', 'end', values=[f"∑ {nombre.upper()}", f'{vals[0]*scale_P_lineal:.3f}', f'{vals[2]*scale_z:.3f}'])
             
         for id in self.tabla_r.get_children(): self.tabla_r.delete(id)
@@ -761,8 +762,8 @@ class Aplicacion(tk.Tk):
                     fp_out = self.map_P[out_p_sel]
                     lbl_p = out_p_sel
                     
-                scale_z = 1.0/fl
-                scale_p = 1.0/fp_out
+                scale_z = 1.0 / fl
+                scale_p = 1.0 / fp_out
                 scale_P_lineal = 1.0 / (fF / fl)
                 lbl_F_L = f"{F}/{L}"
                 
@@ -773,9 +774,6 @@ class Aplicacion(tk.Tk):
                 png_main = path.replace('.csv', '.png')
                 self.fig_resul.savefig(png_main, dpi=200, bbox_inches='tight') 
                 rutas_png['principal'] = png_main
-                
-                from matplotlib.figure import Figure
-                from matplotlib.backends.backend_agg import FigureCanvasAgg
                 
                 c_res = self.resultado.componentes
                 capas = [

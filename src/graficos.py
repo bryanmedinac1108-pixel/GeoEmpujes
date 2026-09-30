@@ -1,8 +1,8 @@
 """
 Módulo de Gráficos Geotécnicos con Matplotlib.
 Renderiza el perfil y los polígonos de presión.
-Avanzado: Soporte visual completo y dinámico para presiones negativas (tracción) 
-con márgenes de escala garantizados.
+Soporte visual completo y dinámico para presiones negativas (tracción) 
+con márgenes de escala garantizados y títulos custom para exportaciones aisladas.
 """
 import math
 from matplotlib.figure import Figure
@@ -164,15 +164,12 @@ def renderizar_presiones(ax, resultado, scale_z=1.0, scale_p=1.0, unidad_p="kPa"
         if visibles['Sismo']: s += f.sismo
         return s
         
-    # --- AJUSTE MATEMÁTICO DE MÁRGENES DE GRÁFICO ---
-    # Detecta el valor más grande y más pequeño para definir la escala y el margen
     min_p_vis = min([min([sumar_presiones_visibles(f) * scale_p for f in resultado.filas])] + [0.0])
     max_p_vis = max([max([sumar_presiones_visibles(f) * scale_p for f in resultado.filas])] + [1.0])
     
     span_p = max(max_p_vis - min_p_vis, 1.0)
     ratio_z_x = H_disp / span_p
     
-    # 50% de margen de protección si el dato es negativo para que el texto encaje perfectamente
     left_margin = abs(min_p_vis) * 0.50 if min_p_vis < -0.1 else span_p * 0.1
     min_x_bound = min_p_vis - left_margin
     max_x_bound = max_p_vis + span_p * 1.5 
@@ -296,7 +293,6 @@ def renderizar_presiones(ax, resultado, scale_z=1.0, scale_p=1.0, unidad_p="kPa"
             ax.text(x_resultant_tail + span_p*0.02, z_T, f"{lbl_title} = {sum_P*scale_F:.2f} {unidad_F}\ny_T = {Y_T:.2f} {unidad_z}", 
                     va='top', ha='left', color='#cc0000', fontweight='bold', fontsize=9, bbox=t_box)
             
-    # LÍMITES APLICADOS AL FINAL DEL DIBUJO
     ax.set_xlim(min_x_bound, max_x_bound)
 
     min_z = min(-0.5, - H_disp * abs(tan_t) * 1.5)
