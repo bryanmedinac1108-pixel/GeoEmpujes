@@ -1,57 +1,64 @@
 """
 Módulo Principal de Interfaz Gráfica (GUI) - Tkinter.
-Exportación completa de gráficas combinadas e individuales existentes en segundo plano.
+[V.1.0] Exportación completa de gráficas y cálculo de empujes.
+[V.2.0] Incluye Verificación de Estabilidad (Unidad 2).
 """
-# Importa la librería estándar de Tkinter para crear ventanas y botones
+# [V.1.0] Importa la librería principal de Python para ventanas
 import tkinter as tk
-# Importa sub-módulos de Tkinter para cuadros de diálogo (abrir/guardar), alertas (mensajes) y widgets modernos (ttk)
+# [V.1.0] Importa widgets modernos, cuadros de diálogo y alertas
 from tkinter import filedialog, messagebox, ttk
-# Importa json para guardar y cargar los datos del proyecto en archivos estructurados
+# [V.1.0] Importa JSON para guardar y cargar proyectos
 import json
-# Importa Figure de matplotlib, que es el "lienzo" en blanco donde se dibujan los gráficos
+# [V.1.0] Importa Figure de Matplotlib (Lienzo en blanco)
 from matplotlib.figure import Figure
-# Importa el "adaptador" que permite incrustar gráficos de Matplotlib dentro de una ventana de Tkinter, junto con su barra de herramientas
+# [V.1.0] Importa el adaptador de Matplotlib para Tkinter
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
-# Importa el motor de renderizado de imágenes estáticas (para exportar PNGs en segundo plano sin mostrarlos)
+# [V.1.0] Importa el generador de imágenes en segundo plano
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 
-# Importa las clases, modelos y funciones que se han desarrollado en los otros archivos
+# [V.1.0] Importa las clases base de la Unidad 1
 from modelos import Caso, Carga, Estrato
+# [V.1.0] Importa la función de cálculo de empujes (Unidad 1)
 from calculo import resolver
+# [V.1.0] Importa la función de creación de PDF y CSV
 from exportar import exportar
+# [V.1.0] Importa los motores de dibujo gráfico
 from graficos import renderizar_perfil, renderizar_presiones
 
-# Define la clase principal de la aplicación, heredando de tk.Tk (la ventana principal)
+# [V.1.0] Define la clase principal de la aplicación GUI
 class Aplicacion(tk.Tk):
     def __init__(self):
-        # Inicializa la ventana principal
+        # [V.1.0] Inicializa la ventana madre de Windows
         super().__init__()
-        # Configura el título y el tamaño de la ventana
-        self.title('Empujes laterales | Grupo 2')
+        # [V.1.0] Da título a la ventana
+        self.title('Empujes laterales y Estabilidad | Ingeniería Civil')
+        # [V.1.0] Configura el tamaño inicial y mínimo
         self.geometry('1350x780') 
-        self.minsize(1100, 650) # Establece un tamaño mínimo para que la interfaz no se rompa si se achica
+        self.minsize(1100, 650)
         
-        # --- CONFIGURACIÓN DE ESTILOS Y TEMAS ---
+        # [V.1.0] Configuración de temas visuales
         style = ttk.Style(self)
-        if 'clam' in style.theme_names(): style.theme_use('clam') # Usa el tema "clam" si está disponible (es más moderno)
-        # Define tamaños y estilos de fuente para títulos, encabezados y botones
+        if 'clam' in style.theme_names(): style.theme_use('clam')
         style.configure('Title.TLabel', font=('Segoe UI', 18, 'bold'))
         style.configure('Head.TLabel', font=('Segoe UI', 11, 'bold'))
         style.configure('TButton', padding=7)
         
-        # --- VARIABLES DE ESTADO ---
-        self.resultado = None # Almacenará el resultado del cálculo
-        self.cargas_rows = [] # Lista para guardar las filas dinámicas de la tabla de sobrecargas
-        self.last_carga_idx = None # Rastreador para saber qué carga fue seleccionada últimamente (para selección múltiple)
+        # [V.1.0] Variable que guarda la memoria de los empujes
+        self.resultado = None
+        # [V.2.0] Variable que guarda la memoria de los cálculos de estabilidad
+        self.resultado_estabilidad = None
+        # [V.1.0] Almacena las filas de la tabla de sobrecargas
+        self.cargas_rows = [] 
+        # [V.1.0] Recuerda el último clic en sobrecargas
+        self.last_carga_idx = None 
         
-        # --- GESTOR DE UNIDADES DESACOPLADO ---
-        # Define las variables reactivas de Tkinter para las unidades
-        self.uni_L = tk.StringVar(value='m') # Longitud
-        self.uni_F = tk.StringVar(value='kN') # Fuerza
-        self.uni_P = tk.StringVar(value='kPa') # Presión
-        self.uni_Gamma = tk.StringVar(value='kN/m³') # Peso específico
+        # [V.1.0] Configuración del sistema de unidades reactivas
+        self.uni_L = tk.StringVar(value='m')
+        self.uni_F = tk.StringVar(value='kN')
+        self.uni_P = tk.StringVar(value='kPa')
+        self.uni_Gamma = tk.StringVar(value='kN/m³')
         
-        # Diccionarios con factores de conversión respecto al Sistema Internacional (SI) estándar del cálculo interno (m, kN)
+        # [V.1.0] Diccionarios de conversión al Sistema Internacional base
         self.map_L = {'m': 1.0, 'cm': 0.01, 'mm': 0.001, 'ft': 0.3048, 'in': 0.0254}
         self.map_F = {'kN': 1.0, 'MN': 1000.0, 'N': 0.001, 'tonf': 9.80665, 'kgf': 0.00980665, 'lbf': 0.00444822, 'kip': 4.44822}
         self.map_P = {
@@ -66,34 +73,32 @@ class Aplicacion(tk.Tk):
             'g/cm³': 9.80665, 'lbf/ft³ (pcf)': 0.157147, 'kip/ft³ (kcf)': 157.147
         }
         
-        # Inicializa y construye todas las secciones de la interfaz
+        # [V.1.0] Ejecuta constructores de la interfaz gráfica
         self._menu_superior()
         self._layout()
-        self._limpiar() # Rellena la interfaz con valores por defecto 
+        self._limpiar()  
         
-        # Configura "listeners" (observadores): Si el usuario cambia los ángulos o medidas del muro, se actualiza la gráfica en tiempo real
+        # [V.1.0] Triggers que re-dibujan el muro si cambia algún dato
         for var in (self.alpha, self.beta, self.b_base, self.e_pantalla):
             var.trace_add('write', self._actualizar_grafico_muro)
-        self.altura.trace_add('write', self._on_altura_trace) # Si cambia la altura, recalcula los espesores proporcionales
+        self.altura.trace_add('write', self._on_altura_trace)
 
-    # --- EVALUADOR MATEMÁTICO TIPO EXCEL ---
+    # [V.1.0] Evaluador matemático de texto estilo Excel
     def _eval_math(self, expr):
-        """Permite que el usuario escriba fórmulas matemáticas simples en las celdas (ej: =10/3)."""
         try:
-            expr = str(expr).strip().replace(',', '.') # Limpia espacios y cambia coma por punto
-            if expr.startswith('='): expr = expr[1:] # Si empieza con =, lo quita
+            expr = str(expr).strip().replace(',', '.')
+            if expr.startswith('='): expr = expr[1:]
             if not expr: return 0.0
-            permitidos = "0123456789+-*/(). " # Por seguridad, restringe caracteres permitidos (evita inyecciones de código)
-            # Evalúa la expresión matemática usando eval() de Python
+            permitidos = "0123456789+-*/(). "
             if all(c in permitidos for c in expr): return float(eval(expr))
             return float(expr)
-        except Exception: return 0.0 # Si hay error, devuelve 0 por defecto
+        except Exception: return 0.0
 
-    # Función rápida para obtener y evaluar el valor de una variable Tkinter
+    # [V.1.0] Retorna variables en formato numérico flotante
     def _float(self, var): 
         return self._eval_math(var.get())
 
-    # --- CONSTRUCCIÓN DEL MENÚ SUPERIOR ---
+    # [V.1.0] Menú desplegable Archivo y Configuración
     def _menu_superior(self):
         menu_bar = tk.Menu(self)
         self.config(menu=menu_bar)
@@ -109,85 +114,82 @@ class Aplicacion(tk.Tk):
         config_menu.add_command(label="Unidades de entrada...", command=self._config_unidades)
         menu_bar.add_cascade(label="Configuración", menu=config_menu)
 
-    # --- DISEÑO DEL CONTENEDOR PRINCIPAL (LAYOUT) ---
+    # [V.1.0] Estructura global de paneles en pantalla
     def _layout(self):
-        # Marco exterior principal
         outer = ttk.Frame(self, padding=15); outer.pack(fill='both', expand=True)
-        # Título y etiqueta para mostrar qué sistema de unidades está activo
         ttk.Label(outer, text='Empujes laterales en muros', style='Title.TLabel').pack(anchor='w')
         self.lbl_unidades_sub = ttk.Label(outer, text='Personalizado')
         self.lbl_unidades_sub.pack(anchor='w', pady=(2,10))
         
-        # Panel inferior de botones fijos
         bottom = ttk.Frame(outer)
         bottom.pack(side='bottom', fill='x', pady=(12,0))
         ttk.Button(bottom, text='Limpiar datos', command=self._limpiar).pack(side='left')
-        self.btn_calcular = ttk.Button(bottom, text='Calcular y mostrar resultados', command=self._calcular)
+        
+        # [V.2.0] Botón de Cálculo actualizado para ejecutar también la estabilidad
+        self.btn_calcular = ttk.Button(bottom, text='Calcular Empujes y Estabilidad', command=self._calcular)
         self.btn_calcular.pack(side='right')
-        # Botón de exportar inicia desactivado hasta que haya resultados
+        
         self.btn_exportar = ttk.Button(bottom, text='Exportar Reporte (CSV + PDF)', command=self._exportar, state='disabled')
         self.btn_exportar.pack(side='right', padx=(0, 10))
 
-        # Configuración de los Paneles Divisores (PanedWindows) que el usuario puede arrastrar para agrandar/achicar zonas
-        self.main_pw_v = ttk.Panedwindow(outer, orient='vertical') # Divide arriba y abajo
+        # [V.1.0] Paneles divisores ajustables (Splitters)
+        self.main_pw_v = ttk.Panedwindow(outer, orient='vertical')
         self.main_pw_v.pack(side='top', fill='both', expand=True)
         
-        self.top_pw_h = ttk.Panedwindow(self.main_pw_v, orient='horizontal') # Divide izquierda y derecha
+        self.top_pw_h = ttk.Panedwindow(self.main_pw_v, orient='horizontal')
         self.main_pw_v.add(self.top_pw_h, weight=1)
         
-        # Contenedor para el gráfico de perfil (esquina inferior izquierda)
         self.frame_perfil = ttk.Frame(self.main_pw_v)
         self.main_pw_v.add(self.frame_perfil, weight=1)
         
-        # Contenedor para las pestañas de ingreso de datos (Notebook)
         self.frame_tabs = ttk.Frame(self.top_pw_h)
         self.top_pw_h.add(self.frame_tabs, weight=1)
         
         self.tabs = ttk.Notebook(self.frame_tabs)
         self.tabs.pack(fill='both', expand=True)
         
-        # Contenedor para el gráfico de resultados (se oculta al inicio)
         self.frame_graf_resul = ttk.Frame(self.top_pw_h)
         
-        # Definición de las 4 pestañas de la aplicación
+        # [V.1.0] Creación de las Pestañas (Frames)
         self.general = ttk.Frame(self.tabs, padding=18)
         self.estratos_tab = ttk.Frame(self.tabs, padding=18)
         self.cargas_tab = ttk.Frame(self.tabs, padding=18)
         self.salida = ttk.Frame(self.tabs, padding=12)
+        # [V.2.0] Creación de la nueva pestaña de Estabilidad (U2)
+        self.estab_tab = ttk.Frame(self.tabs, padding=18) 
         
+        # [V.2.0] Bucle para añadir las pestañas al gestor, incluyendo Estabilidad en la posición 4
         for tab, title in ((self.general, '1 · Datos generales'), (self.estratos_tab, '2 · Estratos y agua'),
-                          (self.cargas_tab, '3 · Sobrecargas'), (self.salida, '4 · Resultados')):
+                          (self.cargas_tab, '3 · Sobrecargas'), (self.estab_tab, '4 · Estabilidad (U2)'), (self.salida, '5 · Resultados')):
             self.tabs.add(tab, text=title)
             
-        # Llama a las funciones que construyen el interior de cada pestaña
-        self._general(); self._estratos(); self._cargas(); self._salida()
+        # [V.2.0] Construcción del contenido interno llamando a sus funciones correspondientes
+        self._general(); self._estratos(); self._cargas(); self._estabilidad(); self._salida()
         self._toggle_metodo(); self._actualizar_textos_unidades() 
         
-        # --- INCRUSTACIÓN DEL GRÁFICO DEL PERFIL ---
+        # [V.1.0] Creación del Gráfico Inferior (Perfil)
         self.fig_perfil = Figure(figsize=(10, 3.5), dpi=100, tight_layout=True)
         self.ax_perfil = self.fig_perfil.add_subplot(111); self.ax_perfil.axis('off') 
         self.canvas_perfil = FigureCanvasTkAgg(self.fig_perfil, master=self.frame_perfil)
-        self.toolbar_perfil = NavigationToolbar2Tk(self.canvas_perfil, self.frame_perfil) # Barra de herramientas (zoom, guardar)
+        self.toolbar_perfil = NavigationToolbar2Tk(self.canvas_perfil, self.frame_perfil)
         self.toolbar_perfil.update()
-        self.canvas_perfil.get_tk_widget().pack(side='top', fill='both', expand=True) # Empaqueta el canvas gráfico
+        self.canvas_perfil.get_tk_widget().pack(side='top', fill='both', expand=True)
         
-        # --- INCRUSTACIÓN DEL GRÁFICO DE RESULTADOS ---
+        # [V.1.0] Creación del Gráfico Derecho (Presiones Resultantes)
         self.fig_resul = Figure(figsize=(5, 4), dpi=100, tight_layout=True)
         self.ax_resul = self.fig_resul.add_subplot(111); self.ax_resul.axis('off') 
         
-        # Panel superior de Checkboxes para prender y apagar capas (Suelo, Agua, etc.)
+        # [V.1.0] Menú superior derecho para ocultar/mostrar capas visuales
         self.f_capas = ttk.Frame(self.frame_graf_resul)
         self.f_capas.pack(side='top', fill='x', pady=(0,2))
         ttk.Label(self.f_capas, text="Capas visuales:").pack(side='left', padx=(0, 5))
         
-        # Variables booleanas asociadas a los Checkboxes
         self.vis_suelo = tk.BooleanVar(value=True)
         self.vis_agua = tk.BooleanVar(value=True)
         self.vis_carga = tk.BooleanVar(value=True)
         self.vis_sismo = tk.BooleanVar(value=True)
         self.vis_vectores = tk.BooleanVar(value=True)
         
-        # Crea los botones enlazándolos al comando de actualización gráfica
         self.chk_suelo = ttk.Checkbutton(self.f_capas, text="Suelo", variable=self.vis_suelo, command=self._actualizar_resultados_por_unidad)
         self.chk_suelo.pack(side='left', padx=3)
         self.chk_agua = ttk.Checkbutton(self.f_capas, text="Agua", variable=self.vis_agua, command=self._actualizar_resultados_por_unidad)
@@ -199,27 +201,24 @@ class Aplicacion(tk.Tk):
         self.chk_vectores = ttk.Checkbutton(self.f_capas, text="Vectores (y)", variable=self.vis_vectores, command=self._actualizar_resultados_por_unidad)
         self.chk_vectores.pack(side='left', padx=3)
 
-        # Muestra el canvas gráfico derecho
         self.canvas_resul = FigureCanvasTkAgg(self.fig_resul, master=self.frame_graf_resul)
         self.toolbar_resul = NavigationToolbar2Tk(self.canvas_resul, self.frame_graf_resul)
         self.toolbar_resul.update()
         self.canvas_resul.get_tk_widget().pack(side='top', fill='both', expand=True)
 
-    # Función genérica rápida para crear cajas de texto con etiqueta al lado
+    # [V.1.0] Creador dinámico de "Label + Input" alineados a cuadrícula
     def _entry(self, parent, row, text, value, width=14, column=0):
         lbl = ttk.Label(parent, text=text)
         lbl.grid(row=row, column=column, padx=6, pady=7, sticky='w')
         var = tk.StringVar(value=str(value))
         ent = ttk.Entry(parent, textvariable=var, width=width)
         ent.grid(row=row, column=column+1, padx=6, pady=7, sticky='w')
-        # Enlaza el evaluador matemático: Si presionas 'Enter' o sales del cuadro, se evalúa lo ingresado
         def _aplicar_formula(evt): var.set(f"{self._eval_math(var.get()):.3f}")
         ent.bind('<Return>', _aplicar_formula); ent.bind('<FocusOut>', _aplicar_formula)
         return var, lbl, ent
 
-    # --- PESTAÑA 1: DATOS GENERALES ---
+    # [V.1.0] Contenido de Pestaña: Datos Generales
     def _general(self):
-        # Incorpora un Scrollbar en caso de que la pestaña quede muy pequeña
         canvas = tk.Canvas(self.general, highlightthickness=0)
         scrollbar = ttk.Scrollbar(self.general, orient="vertical", command=canvas.yview)
         scrollable_frame = ttk.Frame(canvas)
@@ -228,10 +227,10 @@ class Aplicacion(tk.Tk):
         self.canvas_window_id = canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
         canvas.pack(side="left", fill="both", expand=True); scrollbar.pack(side="right", fill="y")
+        
         canvas.bind("<Configure>", lambda event: canvas.itemconfig(self.canvas_window_id, width=event.width))
-        canvas.bind_all("<MouseWheel>", lambda event: canvas.yview_scroll(int(-1*(event.delta/120)), "units")) # Scroll con la rueda del ratón
+        canvas.bind_all("<MouseWheel>", lambda event: canvas.yview_scroll(int(-1*(event.delta/120)), "units"))
 
-        # Construye las 3 subsecciones con opciones, listas desplegables y entradas
         f_geo = ttk.LabelFrame(scrollable_frame, text='1. Geometría del Muro', padding=15)
         f_geo.pack(anchor='nw', fill='x', pady=5, padx=5)
         
@@ -278,9 +277,8 @@ class Aplicacion(tk.Tk):
         
         self._toggle_campos_muro()
 
-    # --- LÓGICA DE ACTUALIZACIÓN (ON_CHANGE) ---
+    # [V.1.0] Eventos reactivos de interfaz (Muestran/ocultan opciones incompatibles)
     def _cambio_condicion(self, event=None):
-        """Si selecciona Reposo, fuerza el método Jaky y oculta las demás opciones."""
         if self.cond.get() == 'reposo':
             self.combo_metodo['values'] = ['Jaky']; self.metodo.set('Jaky')
         else:
@@ -289,7 +287,6 @@ class Aplicacion(tk.Tk):
         self._toggle_metodo(); self._actualizar_grafico_muro()
 
     def _toggle_metodo(self, event=None):
-        """Si selecciona Rankine/Jaky oculta la columna delta de la tabla (no requiere fricción muro-suelo)."""
         cols = ['#','h','γ','γsat','φ′ (°)','c′','δ (°)']
         if hasattr(self, 'tabla_e'):
             vis_cols = cols[:-1] if self.metodo.get() in ['Rankine', 'Jaky'] else cols
@@ -299,14 +296,12 @@ class Aplicacion(tk.Tk):
             self._actualizar_grafico_muro()
 
     def _cambio_tipo_muro(self, event=None):
-        """Si cambia a Trapezoidal asegura que el ángulo no sea de 90° para que exista cuña."""
         if self.tipo_muro.get() == 'Trapezoidal':
             if self._float(self.beta) >= 90: self.beta.set('45')
         elif self.tipo_muro.get() == 'Rectangular': self.beta.set('90')
         self._actualizar_grafico_muro()
 
     def _toggle_campos_muro(self, event=None):
-        """Muestra u oculta las medidas de Base (b) y Espesor (e) si es un muro Personalizado o Genérico."""
         if self.modo_muro.get() == 'Personalizado':
             self.lbl_b.grid(row=2, column=0, sticky='w', padx=6, pady=7); self.ent_b.grid(row=2, column=1, padx=6, sticky='w')
             self.lbl_e.grid(row=2, column=2, sticky='w', padx=6, pady=7); self.ent_e.grid(row=2, column=3, padx=6, sticky='w')
@@ -314,20 +309,19 @@ class Aplicacion(tk.Tk):
             self.lbl_b.grid_forget(); self.ent_b.grid_forget(); self.lbl_e.grid_forget(); self.ent_e.grid_forget()
         self._actualizar_grafico_muro()
 
-    # Función constructora para crear Tablas Treeview con barras de desplazamiento
+    # [V.1.0] Creador dinámico de tablas nativas (Treeview)
     def _tabla(self, parent, cols, height=9):
         f = ttk.Frame(parent); f.pack(fill='both', expand=True, pady=8)
         t = ttk.Treeview(f, columns=cols, show='headings', height=height, selectmode='extended')
         for col in cols: 
             t.heading(col, text=col)
-            t.column(col, minwidth=50, anchor='center', stretch=True) # stretch=True permite que llenen el espacio vacío
+            t.column(col, minwidth=50, anchor='center', stretch=True)
         s = ttk.Scrollbar(f, orient='vertical', command=t.yview); t.configure(yscroll=s.set)
         t.pack(side='left', fill='both', expand=True); s.pack(side='right', fill='y')
         return t
 
-    # --- PESTAÑA 2: ESTRATOS ---
+    # [V.1.0] Contenido de Pestaña: Estratos (Suelos del relleno)
     def _estratos(self):
-        # Panel del Nivel Freático
         top = ttk.LabelFrame(self.estratos_tab, text='Nivel freático', padding=10); top.pack(fill='x')
         self.agua = tk.BooleanVar(value=False)
         ttk.Checkbutton(top, text='Considerar agua', variable=self.agua).grid(row=0, column=0, padx=8)
@@ -337,35 +331,28 @@ class Aplicacion(tk.Tk):
         self.agua.trace_add('write', self._toggle_agua); self._toggle_agua()
         self.nf.trace_add('write', self._actualizar_grafico_muro)
         
-        # Botones de agregar y eliminar
         botones = ttk.Frame(self.estratos_tab)
         botones.pack(side='bottom', fill='x', pady=(5, 0))
         ttk.Button(botones, text='+ Agregar estrato', command=self._agregar_estrato).pack(side='left', padx=3)
         ttk.Button(botones, text='Eliminar seleccionado(s)', command=self._eliminar_estrato).pack(side='left', padx=3)
         ttk.Label(botones, text='(Doble clic para modificar. Shift/Ctrl para multi-selección)').pack(side='left', padx=15)
 
-        # Inicializa la tabla
         self.tabla_e = self._tabla(self.estratos_tab, ['#','h','γ','γsat','φ′ (°)','c′','δ (°)'], height=6)
-        # Eventos del mouse: Doble Clic (Editar Celda) y Drag & Drop (Mover Filas para ordenar los estratos)
         self.tabla_e.bind('<Double-1>', lambda e: self._iniciar_edicion_estrato(e, self.tabla_e))
         self.tabla_e.bind('<ButtonPress-1>', self._on_drag_start)
         self.tabla_e.bind('<ButtonRelease-1>', self._on_drag_release)
 
     def _toggle_agua(self, *args):
-        """Desactiva los inputs de agua si no se ha marcado el Checkbox."""
         if hasattr(self, 'ent_nf') and hasattr(self, 'ent_g_agua'):
             estado = 'normal' if self.agua.get() else 'disabled'
             self.ent_nf.configure(state=estado); self.ent_g_agua.configure(state=estado)
             self._actualizar_grafico_muro()
 
-    # --- RUTINAS DE DRAG & DROP Y EDICIÓN EN LA TABLA ---
     def _on_drag_start(self, event):
-        """Identifica qué fila se ha agarrado con el ratón."""
         row = self.tabla_e.identify_row(event.y)
         self.drag_data = {'item': row} if row else None
 
     def _on_drag_release(self, event):
-        """Intercambia el orden de la tabla cuando se suelta la fila."""
         if not getattr(self, 'drag_data', None) or not self.drag_data.get('item'): return
         target_row = self.tabla_e.identify_row(event.y)
         item = self.drag_data['item']
@@ -377,8 +364,6 @@ class Aplicacion(tk.Tk):
     def _on_altura_trace(self, *args): self._recalcular_estratos()
 
     def _recalcular_estratos(self):
-        """Rutina de auto-ajuste de altura: Si cambia H, los estratos se dividen equitativamente el espacio
-        (salvo aquellos cuyo espesor fue ingresado manualmente y quedó 'locked/bloqueado')."""
         h_total = self._float(self.altura)
         if h_total <= 0: return
         
@@ -407,7 +392,6 @@ class Aplicacion(tk.Tk):
         self._actualizar_grafico_muro()
 
     def _iniciar_edicion_estrato(self, event, tree):
-        """Crea una caja de entrada superpuesta a la celda cuando se hace doble clic."""
         if tree.identify("region", event.x, event.y) != "cell": return
         col_idx = int(tree.identify_column(event.x)[1:]) - 1
         item_id = tree.focus()
@@ -428,20 +412,18 @@ class Aplicacion(tk.Tk):
             valores = list(tree.item(item_id, 'values'))
             valores[col_idx] = nuevo_val
             
-            # Bloquea (lock) la celda si el usuario modificó manualmente la altura (h)
             if col_idx == 1:
                 tags = list(tree.item(item_id, 'tags'))
                 if 'locked' not in tags: tags.append('locked'); tree.item(item_id, tags=tags)
                 
             tree.item(item_id, values=valores); editor.destroy()
-            if col_idx == 1: self._recalcular_estratos() # Dispara recálculo global de alturas
+            if col_idx == 1: self._recalcular_estratos()
             else: self._actualizar_grafico_muro()
                 
         editor.bind('<Return>', guardar_edicion); editor.bind('<FocusOut>', guardar_edicion); editor.bind('<Escape>', lambda e: editor.destroy())
 
     def _agregar_estrato(self):
         num = len(self.tabla_e.get_children()) + 1
-        # Añade datos de un suelo granular genérico y recalcula
         self.tabla_e.insert('', 'end', values=[num, 0.0, 18, 20, 30, 0, 0])
         self._recalcular_estratos()
 
@@ -452,13 +434,12 @@ class Aplicacion(tk.Tk):
         self._renumerar(); self._recalcular_estratos()
 
     def _renumerar(self):
-        """Asegura que la columna # siempre sea secuencial, aunque el usuario haya reordenado las filas."""
         for j, item_id in enumerate(self.tabla_e.get_children(), 1):
             v = list(self.tabla_e.item(item_id, 'values'))
             v[0] = j
             self.tabla_e.item(item_id, values=v)
 
-    # --- PESTAÑA 3: CARGAS ---
+    # [V.1.0] Contenido de Pestaña: Sobrecargas (Actividad Humana, Tráfico)
     def _cargas(self):
         botones = ttk.Frame(self.cargas_tab)
         botones.pack(side='bottom', fill='x', pady=(5, 0))
@@ -466,13 +447,8 @@ class Aplicacion(tk.Tk):
         ttk.Button(botones, text='Eliminar seleccionadas', command=self._eliminar_carga).pack(side='left', padx=3)
         ttk.Label(botones, text='(Shift+Clic en las casillas para rango múltiple)').pack(side='left', padx=15)
 
-        ttk.Label(
-            self.cargas_tab,
-            text="Unidades de magnitud: uniforme/franja = F/L²; lineal = F/L; puntual = F. a = distancia al muro; b = ancho de franja.",
-            foreground='#555555'
-        ).pack(side='top', anchor='w', pady=(0, 4))
+        ttk.Label(self.cargas_tab, text="Unidades de magnitud: uniforme/franja = F/L²; lineal = F/L; puntual = F. a = distancia al muro; b = ancho de franja.", foreground='#555555').pack(side='top', anchor='w', pady=(0, 4))
         
-        # Simula una tabla usando filas y celdas individuales para permitir edición rápida y combos en cada celda
         header = ttk.Frame(self.cargas_tab)
         header.pack(side='top', fill='x', pady=(5, 2))
         ttk.Label(header, text="Sel", width=4).grid(row=0, column=0, padx=2)
@@ -489,7 +465,6 @@ class Aplicacion(tk.Tk):
         except ValueError: pass
 
     def _carga_shift_click(self, event, row_data):
-        # Permite seleccionar masivamente múltiples filas de sobrecargas de golpe manteniendo pulsado "Shift"
         try:
             idx = self.cargas_rows.index(row_data)
             if self.last_carga_idx is not None and self.last_carga_idx < len(self.cargas_rows):
@@ -502,11 +477,9 @@ class Aplicacion(tk.Tk):
         except ValueError: pass
 
     def _agregar_carga(self, tipo='franja', mag=150.0, a=0.0, b=2.0):
-        # Genera una nueva fila en el contenedor
         row_frame = ttk.Frame(self.cargas_inner)
         row_frame.pack(fill='x', pady=2)
         
-        # Checkbox (para borrarla si se selecciona)
         var_sel = tk.BooleanVar(value=False)
         chk_sel = ttk.Checkbutton(row_frame, variable=var_sel)
         chk_sel.grid(row=0, column=0, padx=2)
@@ -533,7 +506,6 @@ class Aplicacion(tk.Tk):
         ent_a.bind('<Return>', lambda e: _aplicar_math(e, var_a)); ent_a.bind('<FocusOut>', lambda e: _aplicar_math(e, var_a))
         ent_b.bind('<Return>', lambda e: _aplicar_math(e, var_b)); ent_b.bind('<FocusOut>', lambda e: _aplicar_math(e, var_b))
 
-        # Guarda las referencias en una lista para poder procesarlas
         row_data = {'frame': row_frame, 'sel': var_sel, 'tipo': var_tipo, 'mag': var_mag, 'a': var_a, 'b': var_b, 'ent_a': ent_a, 'ent_b': ent_b}
         self.cargas_rows.append(row_data)
         
@@ -541,23 +513,21 @@ class Aplicacion(tk.Tk):
         chk_sel.bind("<Shift-Button-1>", lambda e, r=row_data: self._carga_shift_click(e, r))
         
         def _update_state(*args):
-            # Lógica Condicional de Entrada: Si elige Uniforme, no usa distancia "A" ni espesor "B". Deshabilita sus cajas de entrada.
             t = var_tipo.get()
             if t == 'uniforme':
                 ent_a.configure(state='normal'); var_a.set('')
                 ent_b.configure(state='normal'); var_b.set('')
                 ent_a.configure(state='disabled'); ent_b.configure(state='disabled')
-            # Puntual y lineal usan "A" (Distancia) pero no espesor "B"
             elif t in ['puntual', 'lineal']:
                 ent_a.configure(state='normal')
                 if not var_a.get(): var_a.set('0.0')
                 ent_b.configure(state='normal'); var_b.set('')
                 ent_b.configure(state='disabled')
-            else: # Franja finita usa todos
+            else:
                 ent_a.configure(state='normal'); ent_b.configure(state='normal')
                 if not var_a.get(): var_a.set('0.0')
                 if not var_b.get(): var_b.set('1.0')
-            self._actualizar_grafico_muro() # Refleja el dibujo en pantalla
+            self._actualizar_grafico_muro()
             
         var_tipo.trace_add('write', _update_state)
         var_mag.trace_add('write', lambda *args: self._actualizar_grafico_muro())
@@ -566,13 +536,107 @@ class Aplicacion(tk.Tk):
         _update_state()
 
     def _eliminar_carga(self):
-        # Destruye gráficamente y remueve de la lista interna todas las cargas marcadas con el "check"
         for r in list(self.cargas_rows):
             if r['sel'].get(): r['frame'].destroy(); self.cargas_rows.remove(r)
         self.last_carga_idx = None 
         self._actualizar_grafico_muro()
 
-    # --- PESTAÑA 4: SALIDA DE RESULTADOS ---
+    # =========================================================================
+    # [V.2.0] NUEVA PESTAÑA: ESTABILIDAD (UNIDAD 2)
+    # =========================================================================
+    # [V.2.0] Construye la interfaz que alimentará al archivo estabilidad.py
+    def _estabilidad(self):
+        # [V.2.0] Marco para las propiedades del Suelo de fundación
+        f_suelo = ttk.LabelFrame(self.estab_tab, text='1. Propiedades del Suelo de Cimentación (Base)', padding=15)
+        f_suelo.pack(fill='x', pady=5)
+        
+        # [V.2.0] Entradas de texto para la zapata (Ancho, fricción)
+        self.ancho_zapata, _, _ = self._entry(f_suelo, 0, 'Ancho total zapata B (m)', 4.60, column=0)
+        self.phi_base, _, _ = self._entry(f_suelo, 0, 'Ángulo fricción base φ (°)', 30.0, column=2)
+        
+        # [V.2.0] Entradas de texto para cohesión y reducciones (k1, k2)
+        self.c_base, _, _ = self._entry(f_suelo, 1, 'Cohesión base c (kPa)', 0.0, column=0)
+        self.k1_base, _, _ = self._entry(f_suelo, 1, 'Factor fricción (k1)', 0.67, column=2)
+        self.k2_base, _, _ = self._entry(f_suelo, 2, 'Factor adhesión (k2)', 0.67, column=0)
+
+        # [V.2.0] Marco para la tabla de cargas verticales estabilizantes
+        f_cargas_v = ttk.LabelFrame(self.estab_tab, text='2. Cargas Verticales Estabilizantes (Peso de concreto, suelo sobre zapata, etc.)', padding=15)
+        f_cargas_v.pack(fill='both', expand=True, pady=5)
+        
+        # [V.2.0] Botones de control de bloques
+        botones_v = ttk.Frame(f_cargas_v)
+        botones_v.pack(side='top', fill='x', pady=(0, 5))
+        ttk.Button(botones_v, text='+ Agregar Carga Vertical', command=self._agregar_carga_v).pack(side='left', padx=3)
+        ttk.Button(botones_v, text='Eliminar seleccionadas', command=self._eliminar_carga_v).pack(side='left', padx=3)
+
+        # [V.2.0] Cabeceras de la tabla
+        header_v = ttk.Frame(f_cargas_v)
+        header_v.pack(side='top', fill='x', pady=(5, 2))
+        ttk.Label(header_v, text="Sel", width=4).grid(row=0, column=0, padx=2)
+        ttk.Label(header_v, text="Descripción del bloque", width=25).grid(row=0, column=1, padx=2)
+        ttk.Label(header_v, text="Peso V (kN/m)", width=15).grid(row=0, column=2, padx=2)
+        ttk.Label(header_v, text="Brazo X desde la punta (m)", width=25).grid(row=0, column=3, padx=2)
+
+        # [V.2.0] Contenedor interno donde se inyectan las filas
+        self.cargas_v_inner = ttk.Frame(f_cargas_v)
+        self.cargas_v_inner.pack(side="top", fill="both", expand=True)
+        self.fuerzas_v_rows = []
+        
+        # [V.2.0] Marco 3: Pantalla rápida de resultados en tiempo real
+        f_res_est = ttk.LabelFrame(self.estab_tab, text='3. Resultados de Verificación de Estabilidad', padding=15)
+        f_res_est.pack(fill='x', pady=5)
+        
+        # [V.2.0] Etiquetas grandes para los Factores de Seguridad (FS)
+        self.lbl_fs_volteo = ttk.Label(f_res_est, text="FS Volteo: ---", font=('Segoe UI', 11, 'bold'), foreground='#1b365d')
+        self.lbl_fs_volteo.grid(row=0, column=0, padx=20, pady=5, sticky='w')
+        
+        self.lbl_fs_desliz = ttk.Label(f_res_est, text="FS Deslizamiento: ---", font=('Segoe UI', 11, 'bold'), foreground='#1b365d')
+        self.lbl_fs_desliz.grid(row=0, column=1, padx=20, pady=5, sticky='w')
+        
+        # [V.2.0] Etiquetas para la capacidad de carga
+        self.lbl_qmax = ttk.Label(f_res_est, text="q_max (Punta): ---", font=('Segoe UI', 11, 'bold'), foreground='#1b365d')
+        self.lbl_qmax.grid(row=1, column=0, padx=20, pady=5, sticky='w')
+        
+        self.lbl_qmin = ttk.Label(f_res_est, text="q_min (Talón): ---", font=('Segoe UI', 11, 'bold'), foreground='#1b365d')
+        self.lbl_qmin.grid(row=1, column=1, padx=20, pady=5, sticky='w')
+        
+        # [V.2.0] Etiqueta de aviso (Estado del Tercio Central)
+        self.lbl_estado_est = ttk.Label(f_res_est, text="Agregue cargas verticales y calcule para verificar.", foreground='#555555')
+        self.lbl_estado_est.grid(row=2, column=0, columnspan=2, padx=20, pady=10, sticky='w')
+
+    # [V.2.0] Función que dibuja en pantalla una nueva fila interactiva para un bloque de peso
+    def _agregar_carga_v(self, desc="Bloque", peso=50.0, brazo=2.0):
+        row_frame = ttk.Frame(self.cargas_v_inner)
+        row_frame.pack(fill='x', pady=2)
+        
+        var_sel = tk.BooleanVar(value=False)
+        ttk.Checkbutton(row_frame, variable=var_sel).grid(row=0, column=0, padx=2)
+        
+        var_desc = tk.StringVar(value=desc)
+        ttk.Entry(row_frame, textvariable=var_desc, width=25).grid(row=0, column=1, padx=2)
+        
+        var_peso = tk.StringVar(value=str(peso))
+        ent_peso = ttk.Entry(row_frame, textvariable=var_peso, width=15)
+        ent_peso.grid(row=0, column=2, padx=2)
+        
+        var_brazo = tk.StringVar(value=str(brazo))
+        ent_brazo = ttk.Entry(row_frame, textvariable=var_brazo, width=20)
+        ent_brazo.grid(row=0, column=3, padx=2)
+
+        def _aplicar_math(evt, variable): variable.set(f"{self._eval_math(variable.get()):.3f}")
+        ent_peso.bind('<Return>', lambda e: _aplicar_math(e, var_peso)); ent_peso.bind('<FocusOut>', lambda e: _aplicar_math(e, var_peso))
+        ent_brazo.bind('<Return>', lambda e: _aplicar_math(e, var_brazo)); ent_brazo.bind('<FocusOut>', lambda e: _aplicar_math(e, var_brazo))
+
+        self.fuerzas_v_rows.append({'frame': row_frame, 'sel': var_sel, 'desc': var_desc, 'peso': var_peso, 'brazo': var_brazo})
+
+    # [V.2.0] Remueve del cálculo y de la vista a las cargas verticales seleccionadas
+    def _eliminar_carga_v(self):
+        for r in list(self.fuerzas_v_rows):
+            if r['sel'].get(): r['frame'].destroy(); self.fuerzas_v_rows.remove(r)
+
+    # =========================================================================
+
+    # [V.1.0] Contenido de Pestaña: Resultados analíticos
     def _salida(self):
         arriba = ttk.Frame(self.salida); arriba.pack(side='top', fill='x')
         self.resumen = ttk.Label(arriba, text='Calcula el caso para ver resultados.', style='Head.TLabel'); self.resumen.pack(side='left')
@@ -582,7 +646,6 @@ class Aplicacion(tk.Tk):
         self.cb_unidad_res.set('Misma que entrada')
         self.cb_unidad_res.pack(side='left'); self.cb_unidad_res.bind('<<ComboboxSelected>>', lambda e: self._actualizar_resultados_por_unidad())
 
-        # Tabla resumen que lista cada Área/Figura generada y su Fuerza y Brazo de palanca final
         self.componentes = ttk.Treeview(self.salida, columns=['Componente','P','y base'], show='headings', height=8)
         self.componentes.heading('Componente', text='Área Desglosada')
         self.componentes.heading('P', text='Fuerza P')
@@ -594,19 +657,17 @@ class Aplicacion(tk.Tk):
         
         self.nota = ttk.Label(self.salida, text='', wraplength=500); self.nota.pack(side='bottom', fill='x', pady=6)
         
-        # Tabla gigante de matriz con los valores en cada milímetro z (Profundidad, Esf. Vertical, K, etc.)
         frame_tabla = ttk.Frame(self.salida); frame_tabla.pack(side='top', fill='both', expand=True)
         self.tabla_r = ttk.Treeview(frame_tabla, columns=['z','Estrato','σ′v','K','Suelo','Agua','Carga','Sismo','Total'], show='headings')
         for c in self.tabla_r['columns']: self.tabla_r.heading(c, text=c); self.tabla_r.column(c, width=82, anchor='center')
         s = ttk.Scrollbar(frame_tabla, orient='vertical', command=self.tabla_r.yview); self.tabla_r.configure(yscroll=s.set)
         self.tabla_r.pack(side='left', fill='both', expand=True); s.pack(side='right', fill='y')
 
-    # --- PANEL EMERGENTE DE CONFIGURACIÓN DE UNIDADES ---
+    # [V.1.0] Ventana flotante de Modal de Unidades
     def _config_unidades(self):
         dlg = tk.Toplevel(self); dlg.title("Unidades de Entrada"); dlg.geometry("380x380")
-        dlg.transient(self); dlg.grab_set() # Convierte la ventana en "Modal" (No deja pinchar nada más hasta que se cierre)
+        dlg.transient(self); dlg.grab_set()
         
-        # 4 Comboboxes para permitir la entrada en cualquier sistema imaginable (MKS, CGS, Sistema Imperial, etc.)
         ttk.Label(dlg, text="1. Longitud:", font=('Segoe UI', 9, 'bold')).pack(pady=(10,2))
         cb_L = ttk.Combobox(dlg, textvariable=self.uni_L, values=list(self.map_L.keys()), state='readonly'); cb_L.pack()
         
@@ -620,7 +681,6 @@ class Aplicacion(tk.Tk):
         cb_Gamma = ttk.Combobox(dlg, textvariable=self.uni_Gamma, values=list(self.map_Gamma.keys()), state='readonly'); cb_Gamma.pack()
         
         def _sugerir_unidades(event):
-            # Rutina que pre-selecciona sugerencias lógicas. (Si cambias longitud a "pie", sugiere presión en "psf")
             L, F = self.uni_L.get(), self.uni_F.get()
             p_sug, g_sug = f"{F}/{L}²", f"{F}/{L}³"
             if p_sug == "kN/m²": p_sug = "kPa"
@@ -634,16 +694,15 @@ class Aplicacion(tk.Tk):
         cb_F.bind('<<ComboboxSelected>>', _sugerir_unidades)
         
         def guardar():
-            # Actualiza automáticamente el Peso del Agua para cuadrar con el nuevo set de unidades
             fpe = self.map_Gamma[self.uni_Gamma.get()]
             self.gamma_agua.set(f"{9.80665 / fpe:.4f}".rstrip('0').rstrip('.'))
-            self._actualizar_textos_unidades() # Modifica las etiquetas (labels) de toda la app
+            self._actualizar_textos_unidades()
             dlg.destroy()
             
         ttk.Button(dlg, text="Aplicar y actualizar tablas", command=guardar).pack(pady=20)
         
+    # [V.1.0] Inyecta la unidad elegida a los títulos de la pantalla
     def _actualizar_textos_unidades(self):
-        """Busca todas las cabeceras de columnas y botones, inyectándoles la unidad correcta para que el usuario no se confunda."""
         L, F = self.uni_L.get(), self.uni_F.get()
         P, Gamma = self.uni_P.get(), self.uni_Gamma.get()
         
@@ -665,14 +724,12 @@ class Aplicacion(tk.Tk):
         
         self._actualizar_resultados_por_unidad()
 
+    # [V.1.0] Traduce datos calculados en SI a las Unidades Elegidas (Para tablas e indicadores)
     def _actualizar_resultados_por_unidad(self):
-        """Traduce los números fríos almacenados en el Resultado en Sistema Internacional, 
-        y los procesa aplicándoles los Factores de Escala antes de presentarlos al usuario."""
         if not self.resultado: return
         r = self.resultado
         
         L, F = self.uni_L.get(), self.uni_F.get()
-        # Escalas maestras desde Metros (fl) y kilonewtons (fF)
         fl, fF = self.map_L[L], self.map_F[F]
         
         out_p_sel = self.cb_unidad_res.get()
@@ -685,15 +742,12 @@ class Aplicacion(tk.Tk):
             
         lbl_F_L = f"{F}/{L}"; lbl_M = f"{F}·{L}/{L}"
 
-        # Escalas combinadas resultantes
         scale_z = 1.0 / fl
         scale_p = 1.0 / fp_out
         scale_P_lineal = 1.0 / (fF / fl)
 
-        # Plasma el resumen rojo
         self.resumen.configure(text=f'E = {r.total * scale_P_lineal:.3f} {lbl_F_L}    |    M = {r.momento * (1.0/fF):.3f} {lbl_M}    |    y = {r.y * scale_z:.3f} {L}')
         
-        # Limpia y regenera la tabla de áreas
         for id in self.componentes.get_children(): self.componentes.delete(id)
         self.componentes.heading('P', text=f'Fuerza P ({lbl_F_L})')
         self.componentes.heading('y base', text=f'Brazo y ({L})')
@@ -711,7 +765,6 @@ class Aplicacion(tk.Tk):
             if abs(vals[0] * scale_P_lineal) > 0.005:
                 self.componentes.insert('', 'end', values=[f"∑ {nombre.upper()}", f'{vals[0]*scale_P_lineal:.3f}', f'{vals[2]*scale_z:.3f}'])
             
-        # Limpia y regenera la matriz de pasos (limitada a máximo 500 filas iterables para no lagear o congelar Tkinter)
         for id in self.tabla_r.get_children(): self.tabla_r.delete(id)
         self.tabla_r.heading('z', text=f'z ({L})')
         self.tabla_r.heading('σ′v', text=f'σ′v ({lbl_p})')
@@ -730,17 +783,14 @@ class Aplicacion(tk.Tk):
                 f'{a.carga * scale_p:.2f}', f'{a.sismo * scale_p:.2f}', f'{a.total * scale_p:.2f}'
             ])
             
-        # Empaqueta y manda al motor gráfico (Matplotlib) la lista de Checkboxes para que dibuje solo lo activo
         visibles = {'Suelo': self.vis_suelo.get(), 'Agua': self.vis_agua.get(), 'Sobrecarga': self.vis_carga.get(), 'Sismo': self.vis_sismo.get(), 'Vectores': self.vis_vectores.get()}
         renderizar_presiones(self.ax_resul, r, scale_z, scale_p, lbl_p, L, scale_P_lineal, lbl_F_L, visibles)
         self.canvas_resul.draw_idle()
 
+    # [V.1.0] Manda a dibujar a Matplotlib el cerro inferior
     def _actualizar_grafico_muro(self, *args):
-        """Recolecta los datos geométricos simples (no matemáticos) y se los envía al dibujador izquierdo (el perfil montañoso)."""
         try:
             beta_val = self._float(self.beta)
-            
-            # Bloqueador de errores: Beta debe ser un ángulo válido para que pueda existir un trapecio
             if self.tipo_muro.get() == 'Trapezoidal' and beta_val >= 90:
                 def corregir_angulo():
                     self.beta.set('89')
@@ -754,12 +804,10 @@ class Aplicacion(tk.Tk):
             for r in self.cargas_rows:
                 cargas_data.append((r['tipo'].get(), self._eval_math(r['mag'].get()), self._eval_math(r['a'].get()), self._eval_math(r['b'].get())))
             
-            # Animación de paneles: Si aún no se ha calculado nada, la ventana derecha (resultados) estará oculta/colapsada
             panes = [str(p) for p in self.top_pw_h.panes()]
             if self.resultado is None:
                 if str(self.frame_graf_resul) in panes: self.top_pw_h.forget(self.frame_graf_resul)
             else:
-                # Si se calcula, fuerza abrir la ventana al centro 55% / 45%
                 if str(self.frame_graf_resul) not in panes:
                     self.top_pw_h.add(self.frame_graf_resul, weight=1)
                     self.update_idletasks()
@@ -768,20 +816,18 @@ class Aplicacion(tk.Tk):
             renderizar_perfil(self.ax_perfil, self._float(self.altura), estratos, cargas_data, self._float(self.nf) if self.agua.get() else None, self._float(self.alpha), beta_val, self.tipo_muro.get(), self.modo_muro.get(), self._float(self.b_base), self._float(self.e_pantalla), self.uni_L.get())
             self.canvas_perfil.draw_idle()
             
-            # Si el dibujo cambió y ya había un cálculo existente, también reescala los resultados de la derecha
             if self.resultado is not None: self._actualizar_resultados_por_unidad()
 
         except Exception: pass 
 
-    # --- RUTINA MAESTRA DE CÁLCULO GENERAL ---
+    # [V.1.0] [V.2.0] LA SUBRUTINA PRINCIPAL QUE GESTIONA TODOS LOS MOTORES DE CÁLCULO
     def _calcular(self):
+        # --- CÁLCULO DE EMPUJES (UNIDAD 1) ---
         try:
-            # Obtiene los diccionarios de conversión. Internamente, TODO se convierte al Sistema Internacional (m, kN)
             fl, fF = self.map_L[self.uni_L.get()], self.map_F[self.uni_F.get()]
             fp = self.map_P[self.uni_P.get()]
             fpe = self.map_Gamma[self.uni_Gamma.get()]
 
-            # Recolecta la lista de estratos traduciendo sus unidades a [m], [kN/m3]
             estratos_si = []
             for id in self.tabla_e.get_children():
                 v = self.tabla_e.item(id,'values')
@@ -789,31 +835,27 @@ class Aplicacion(tk.Tk):
                 
             if not estratos_si: return messagebox.showerror('Faltan datos', 'Agregue al menos un estrato.')
 
-            # Recolecta la lista de Sobrecargas transformando Magnitudes a [kPa] o distancias a [m]
             cargas_si = []
             for r in self.cargas_rows:
                 tipo, mag = r['tipo'].get(), self._eval_math(r['mag'].get())
                 if tipo in ['uniforme', 'franja']: mag_si = mag * fp
-                elif tipo == 'lineal': mag_si = mag * (fF / fl) # F/L
-                else: mag_si = mag * fF # F
+                elif tipo == 'lineal': mag_si = mag * (fF / fl)
+                else: mag_si = mag * fF
                 cargas_si.append(Carga(tipo, mag_si, self._eval_math(r['a'].get())*fl, self._eval_math(r['b'].get())*fl))
             
-            # Construye el Objeto (Caso) y lo inyecta a la clase resolutora de 'calculo.py'
             caso_si = Caso(
                 self._float(self.altura) * fl, estratos_si, self.cond.get(), self.metodo.get(),
                 self._float(self.nf) * fl if self.agua.get() else None, self._float(self.gamma_agua) * fpe,
                 self._float(self.alpha), self._float(self.beta), self._float(self.kh), self._float(self.kv), cargas_si
             )
-            # ¡DATO RECIBIDO! Las matemáticas han concluido.
+            # [V.1.0] Calcula el empuje (llama a calculo.py)
             self.resultado = resolver(caso_si)
             
-            # --- AUTO-FILTRO INTELIGENTE DE CAPAS VISUALES ---
-            # Evalúa qué fenómenos naturales tienen fuerza mayor a cero. Si son cero, los apaga en la gráfica
             c = self.resultado.componentes
             
             v_suelo = abs(c['Suelo'][0]) > 1e-5
             self.vis_suelo.set(v_suelo)
-            self.chk_suelo.configure(state='normal' if v_suelo else 'disabled') # Deshabilita el botón si no existe la fuerza
+            self.chk_suelo.configure(state='normal' if v_suelo else 'disabled')
             
             v_agua = abs(c['Agua'][0]) > 1e-5
             self.vis_agua.set(v_agua)
@@ -830,30 +872,88 @@ class Aplicacion(tk.Tk):
             self.vis_vectores.set(True)
             self.chk_vectores.configure(state='normal')
             
-        except Exception as exc: return messagebox.showerror('Revisar los datos', str(exc)) # Manejador de errores
+        except Exception as exc: return messagebox.showerror('Revisar los datos', str(exc))
+
+        # =========================================================
+        # [V.2.0] EJECUCIÓN AUTOMÁTICA DE LA ESTABILIDAD (UNIDAD 2)
+        # =========================================================
+        try:
+            # [V.2.0] Importa el código estabilizador (Integrante 3)
+            from estabilidad import evaluar_estabilidad
+            from modelos import CargaVertical, SueloCimentacion
             
-        # Si se llegó aquí, el cálculo fue un éxito. Obliga al panel derecho a mostrarse para ver los resultados
+            # [V.2.0] Empaqueta los datos de la base de zapata
+            suelo_base = SueloCimentacion(
+                phi_base=self._float(self.phi_base),
+                c_base=self._float(self.c_base),
+                k1=self._float(self.k1_base),
+                k2=self._float(self.k2_base)
+            )
+
+            # [V.2.0] Traduce todas las cargas gravitacionales verticales al Sistema Internacional (m, kN)
+            fuerzas_verticales = []
+            for r in self.fuerzas_v_rows:
+                f_peso = self._eval_math(r['peso'].get()) * (fF/fl) 
+                f_brazo = self._eval_math(r['brazo'].get()) * fl     
+                if f_peso > 0:
+                    fuerzas_verticales.append(CargaVertical(r['desc'].get(), f_peso, f_brazo))
+
+            # [V.2.0] Si el usuario configuró cargas verticales, inicia la verificación de rotura
+            if fuerzas_verticales:
+                res_est = evaluar_estabilidad(
+                    # [V.2.0] Cruce de datos: Pasa la Resultante Actuante (calculada arriba por la Unidad 1)
+                    empuje_horizontal=self.resultado.total,
+                    momento_empuje=self.resultado.momento,
+                    fuerzas_verticales=fuerzas_verticales,
+                    ancho_base=self._float(self.ancho_zapata) * fl,
+                    suelo_base=suelo_base
+                )
+                
+                # [V.2.0] Actualiza la UI marcando en verde los FS > 1.5 y en rojo los riesgos
+                self.lbl_fs_volteo.config(text=f"FS Volteo: {res_est['fs_volteo']:.2f}", foreground='green' if res_est['fs_volteo']>=1.5 else 'red')
+                self.lbl_fs_desliz.config(text=f"FS Deslizamiento: {res_est['fs_deslizamiento']:.2f}", foreground='green' if res_est['fs_deslizamiento']>=1.5 else 'red')
+                
+                # [V.2.0] Traduce el esfuerzo a kPa (o MPa) para la UI de las tensiones en punta y talón
+                qmax_ui = res_est['q_max'] * (1.0 / fp)
+                qmin_ui = res_est['q_min'] * (1.0 / fp)
+                
+                self.lbl_qmax.config(text=f"q_max (Punta): {qmax_ui:.2f} {self.uni_P.get()}")
+                self.lbl_qmin.config(text=f"q_min (Talón): {qmin_ui:.2f} {self.uni_P.get()}")
+                
+                # [V.2.0] Muestra si cae en el tercio central
+                color_estado = 'green' if 'Conforme' in res_est['estado'] else 'red'
+                self.lbl_estado_est.config(text=f"Estado: {res_est['estado']}", foreground=color_estado)
+                
+                self.resultado_estabilidad = res_est
+            else:
+                self.lbl_estado_est.config(text="⚠️ Agregue los bloques de peso del muro en la tabla para evaluar la estabilidad.", foreground='#cc8800')
+                self.resultado_estabilidad = None
+                
+        # [V.2.0] Capturadores de error para que la UI no colapse si falta estabilidad.py
+        except ImportError:
+            self.lbl_estado_est.config(text="⚠️ Error: Falta archivo 'estabilidad.py' o no se actualizó 'modelos.py'", foreground='red')
+        except Exception as e:
+            self.lbl_estado_est.config(text=f"Error al calcular estabilidad: {str(e)}", foreground='red')
+
+            
+        # [V.1.0] Despliega las herramientas si se calculó bien
         panes = [str(p) for p in self.top_pw_h.panes()]
         if str(self.frame_graf_resul) not in panes:
             self.top_pw_h.add(self.frame_graf_resul, weight=1)
             self.update_idletasks()
             self.top_pw_h.sashpos(0, int(self.top_pw_h.winfo_width() * 0.55))
         
-        # Muestra un texto con posibles advertencias al fondo y habilita el Botón de Exportación PDF
         self.nota.configure(text='  '.join(self.resultado.notas))
         self.tabs.select(self.salida)
         self.btn_exportar.configure(state='normal')
         self._actualizar_grafico_muro()
 
-    # --- RUTINA DE EXPORTACIÓN ---
+    # [V.1.0] Genera los PDF, CSV e Imágenes PNG fantasma en segundo plano
     def _exportar(self):
         if self.resultado is None: return messagebox.showinfo('Aviso', 'Calcule primero.')
-        
-        # Pide una ruta al usuario donde se guardará todo
         path = filedialog.asksaveasfilename(title='Nombre base para CSV y PDF', defaultextension='.csv', filetypes=[('CSV','*.csv')])
         if path:
             try:
-                # Recopila y define las escalas solicitadas en base a las opciones de UI de "Misma que entrada" o personalizadas
                 L, F = self.uni_L.get(), self.uni_F.get()
                 fl, fF = self.map_L[L], self.map_F[F]
                 
@@ -873,16 +973,12 @@ class Aplicacion(tk.Tk):
                 scale_gamma = 1.0 / self.map_Gamma[self.uni_Gamma.get()]
                 lbl_gamma = self.uni_Gamma.get()
                 
-                # --- GENERADOR DE IMÁGENES FANTASMA ---
-                # Este bucle dibuja internamente múltiples gráficos sin mostrarlos en pantalla (Agg backend), y los guarda localmente como archivos '.png' temporales.
                 rutas_png = {}
                 png_main = path.replace('.csv', '.png')
-                # Salva el gráfico completo, con todas sus capas
                 self.fig_resul.savefig(png_main, dpi=200, bbox_inches='tight') 
                 rutas_png['principal'] = png_main
                 
                 c_res = self.resultado.componentes
-                # Identificadores de capas, nombres y títulos internos
                 capas = [
                     ('Suelo', 'Suelo', c_res['Suelo'][0], 'Esfuerzos Analíticos - Aislado: Suelo'),
                     ('Agua', 'Agua', c_res['Agua'][0], 'Esfuerzos Analíticos - Aislado: Agua'),
@@ -891,30 +987,25 @@ class Aplicacion(tk.Tk):
                 ]
                 
                 for clave_vis, clave_comp, magnitud, titulo in capas:
-                    # Solo le pide a Matplotlib que dibuje una gráfica extra si hay una fuerza considerable (mayor a cero)
                     if abs(magnitud * scale_P_lineal) > 1e-5:
                         fig_tmp = Figure(figsize=(5, 4), dpi=200, tight_layout=True)
-                        canvas_tmp = FigureCanvasAgg(fig_tmp) # Motor de dibujo en segundo plano
+                        canvas_tmp = FigureCanvasAgg(fig_tmp)
                         ax_tmp = fig_tmp.add_subplot(111)
                         
-                        # Genera un diccionario que solo tiene en "True" la capa específica (Suelo, por ejemplo) y "Vectores"
                         vis_aislado = {'Suelo': False, 'Agua': False, 'Sobrecarga': False, 'Sismo': False, 'Vectores': True}
                         vis_aislado[clave_vis] = True
                         
-                        # Inyecta a Matplotlib los datos. Este dibujará SOLAMENTE la capa encendida.
                         renderizar_presiones(ax_tmp, self.resultado, scale_z, scale_p, lbl_p, L, scale_P_lineal, lbl_F_L, vis_aislado, titulo)
-                        # Guarda el PNG con un sufijo (ej: archivo_suelo.png) y lo añade al diccionario general.
                         path_aislado = path.replace('.csv', f'_{clave_vis.lower()}.png')
                         fig_tmp.savefig(path_aislado, bbox_inches='tight')
                         rutas_png[clave_vis.lower()] = path_aislado
                 
-                # Una vez creadas las imágenes físicas de apoyo, inyecta toda la información (y el listado de imágenes) al creador global de PDF (exportar.py)
                 archivos = exportar(self.resultado, path, rutas_png, scale_z, scale_p, scale_gamma, L, lbl_p, lbl_gamma)
                 messagebox.showinfo('Reporte Generado', '\n'.join(map(str, archivos)))
             except OSError as exc: messagebox.showerror('Error', str(exc))
 
+    # [V.1.0] Botón de 'Limpiar Todo'
     def _limpiar(self):
-        """Reinicia por completo todo el programa como si se acabase de abrir."""
         self.tipo_muro.set('Rectangular'); self.modo_muro.set('Genérico')
         self._toggle_campos_muro()
         for v, x in ((self.altura, 5.0), (self.beta, 90), (self.alpha, 0), (self.kh, 0), (self.kv, 0), (self.nf, 0), (self.b_base, 2.0), (self.e_pantalla, 0.5)):
@@ -930,8 +1021,21 @@ class Aplicacion(tk.Tk):
         self.cond.set('activa'); self._cambio_condicion()  
         self.agua.set(False)  
         for id in self.tabla_e.get_children(): self.tabla_e.delete(id)
+        
         for r in list(self.cargas_rows): r['frame'].destroy()
         self.cargas_rows.clear()
+        
+        # [V.2.0] Añade rutina para blanquear también los datos de Estabilidad
+        for r in list(self.fuerzas_v_rows): r['frame'].destroy()
+        self.fuerzas_v_rows.clear()
+        if hasattr(self, 'ancho_zapata'):
+            self.ancho_zapata.set('4.60'); self.phi_base.set('30.0'); self.c_base.set('0.0')
+            self.k1_base.set('0.67'); self.k2_base.set('0.67')
+            self.lbl_fs_volteo.config(text="FS Volteo: ---", foreground='#1b365d')
+            self.lbl_fs_desliz.config(text="FS Deslizamiento: ---", foreground='#1b365d')
+            self.lbl_qmax.config(text="q_max (Punta): ---", foreground='#1b365d')
+            self.lbl_qmin.config(text="q_min (Talón): ---", foreground='#1b365d')
+            self.lbl_estado_est.config(text="Agregue cargas verticales y calcule para verificar.", foreground='#555555')
         
         self.vis_suelo.set(True); self.vis_agua.set(True); self.vis_carga.set(True); self.vis_sismo.set(True); self.vis_vectores.set(True)
         if hasattr(self, 'chk_suelo'):
@@ -940,11 +1044,11 @@ class Aplicacion(tk.Tk):
         
         self.last_carga_idx = None
         if hasattr(self, 'btn_exportar'): self.btn_exportar.configure(state='disabled')
-        self.resultado = None; self._recalcular_estratos(); self.tabs.select(self.general)
+        self.resultado = None; self.resultado_estabilidad = None
+        self._recalcular_estratos(); self.tabs.select(self.general)
 
-    # --- RUTINAS PARA EL MENÚ ARCHIVO ---
+    # [V.1.0] [V.2.0] Módulo de Guardado del Archivo de Proyecto en .JSON
     def _guardar_proyecto(self):
-        """Toma cada variable de la UI y la empaqueta dentro de un JSON de diccionario."""
         datos = {
             "unidades": {"L": self.uni_L.get(), "F": self.uni_F.get(), "P": self.uni_P.get(), "Gamma": self.uni_Gamma.get(), "out_P": self.cb_unidad_res.get()},
             "general": {
@@ -956,15 +1060,19 @@ class Aplicacion(tk.Tk):
             },
             "agua": { "considerar": self.agua.get(), "nf": self.nf.get(), "gamma_agua": self.gamma_agua.get() },
             "estratos": [self.tabla_e.item(id, 'values') for id in self.tabla_e.get_children()],
-            "cargas": [[r['tipo'].get(), r['mag'].get(), r['a'].get(), r['b'].get()] for r in self.cargas_rows]
+            "cargas": [[r['tipo'].get(), r['mag'].get(), r['a'].get(), r['b'].get()] for r in self.cargas_rows],
+            # [V.2.0] Incorpora el sub-diccionario guardando las cajas de texto base y los bloques estabilizantes
+            "estabilidad": {
+                "zapata": self.ancho_zapata.get(), "phi": self.phi_base.get(), "c": self.c_base.get(), "k1": self.k1_base.get(), "k2": self.k2_base.get()
+            },
+            "bloques_v": [[r['desc'].get(), r['peso'].get(), r['brazo'].get()] for r in self.fuerzas_v_rows]
         }
         path = filedialog.asksaveasfilename(defaultextension=".json", filetypes=[("Archivos JSON", "*.json")])
         if path:
-            # Escribe la información estructurada localmente
             with open(path, 'w', encoding='utf-8') as f: json.dump(datos, f, indent=4)
                 
+    # [V.1.0] [V.2.0] Apertura de Proyecto y vaciado de sus datos en las celdas
     def _abrir_proyecto(self):
-        """Lee el JSON local y auto-completa las celdas de la interfaz."""
         path = filedialog.askopenfilename(filetypes=[("Archivos JSON", "*.json")])
         if path:
             with open(path, 'r', encoding='utf-8') as f: datos = json.load(f)
@@ -987,22 +1095,31 @@ class Aplicacion(tk.Tk):
             ag = datos.get("agua", {})
             self.agua.set(ag.get("considerar", False)); self.nf.set(ag.get("nf", "0.0")); self.gamma_agua.set(ag.get("gamma_agua", "9.81"))
             
+            # [V.2.0] Recuperador del Diccionario "estabilidad" del JSON abierto
+            estb = datos.get("estabilidad", {})
+            self.ancho_zapata.set(estb.get("zapata", "4.60")); self.phi_base.set(estb.get("phi", "30.0"))
+            self.c_base.set(estb.get("c", "0.0")); self.k1_base.set(estb.get("k1", "0.67")); self.k2_base.set(estb.get("k2", "0.67"))
+            
             for id in self.tabla_e.get_children(): self.tabla_e.delete(id)
             for est in datos.get("estratos", []): 
                 vals = list(est)
-                self.tabla_e.insert('', 'end', values=vals, tags=('locked',)) # Fija las alturas con el "lock" para no re-calcularlas al cargar
+                self.tabla_e.insert('', 'end', values=vals, tags=('locked',))
                 
             for r in list(self.cargas_rows): r['frame'].destroy()
             self.cargas_rows.clear()
-            self.last_carga_idx = None
             for car in datos.get("cargas", []): 
                 self._agregar_carga(tipo=car[0], mag=car[1], a=car[2], b=car[3])
                 
-            self.resultado = None
+            # [V.2.0] Regenerador de las Cajas Verticales a partir del guardado
+            for r in list(self.fuerzas_v_rows): r['frame'].destroy()
+            self.fuerzas_v_rows.clear()
+            for bv in datos.get("bloques_v", []): 
+                self._agregar_carga_v(desc=bv[0], peso=bv[1], brazo=bv[2])
+                
+            self.resultado = None; self.resultado_estabilidad = None
             self.btn_exportar.configure(state='disabled')
             self._recalcular_estratos()
 
-# --- ARRANQUE DE LA APLICACIÓN ---
 if __name__ == '__main__':
     app = Aplicacion()
-    app.mainloop() # Bucle permanente que mantiene la ventana abierta y escuchando acciones del usuario
+    app.mainloop()
