@@ -1,155 +1,128 @@
 """
 Módulo de Modelos de Datos.
-[V.1.0] Incorpora campos para el almacenamiento separado de cargas infinitas y finitas.
-[V.2.0] Incorpora clases para los pesos de la zapata y el suelo de cimentación.
+[V.1.2.1] Incorpora estructuras para empujes laterales del T1 y la verificación de estabilidad del TP.
 """
-# [V.1.0] Importa herramientas para generar clases contenedoras de información de forma automática
+# [V.1.2.0] Importación de dataclasses para la definición de modelos estructurados
 from dataclasses import dataclass, field
-# [V.1.0] Importa la librería 'typing' para especificar tipos de datos (Listas, Opcionales, Diccionarios)
+# [V.1.2.0] Importación de tipos estáticos para tipado estricto
 from typing import List, Optional, Dict
 
-# [V.1.0] Crea la clase contenedora para las propiedades de cada capa de suelo del cerro
+# [V.1.2.0] Estructura de datos para capas de suelo del relleno
 @dataclass
 class Estrato:
-    # [V.1.0] Altura o espesor individual de esta capa de suelo
-    h: float          
-    # [V.1.0] Peso específico natural o en estado seco del suelo
-    gamma: float      
-    # [V.1.0] Peso específico saturado del suelo (para debajo del Nivel Freático)
-    gamma_sat: float  
-    # [V.1.0] Ángulo de fricción interna efectiva del suelo (φ')
-    phi: float        
-    # [V.1.0] Cohesión efectiva del suelo (c')
-    cohesion: float   
-    # [V.1.0] Ángulo de fricción en la interfaz entre el suelo y el muro (δ)
-    delta: float      
+    h: float          # [V.1.2.0] Espesor del estrato (m)
+    gamma: float      # [V.1.2.0] Peso específico natural/seco (kN/m³)
+    gamma_sat: float  # [V.1.2.0] Peso específico saturado (kN/m³)
+    phi: float        # [V.1.2.0] Ángulo de fricción interna (°)
+    cohesion: float   # [V.1.2.0] Cohesión efectiva c' (kPa)
+    delta: float      # [V.1.2.0] Fricción muro-suelo δ (°)
 
-# [V.1.0] Crea la clase contenedora para cualquier sobrecarga externa
+# [V.1.2.0] Estructura de datos para sobrecargas aplicadas
 @dataclass
 class Carga:
-    # [V.1.0] Identifica si la sobrecarga es 'uniforme', 'franja', 'lineal' o 'puntual'
-    tipo: str         
-    # [V.1.0] Valor numérico de la carga impuesta
-    magnitud: float   
-    # [V.1.0] Distancia libre desde la parte posterior del muro hasta la carga (a)
-    a: float          
-    # [V.1.0] Ancho de la zona cargada (b)
-    b: float          
+    tipo: str         # [V.1.2.0] Tipo: 'uniforme', 'franja', 'lineal', 'puntual'
+    magnitud: float   # [V.1.2.0] Magnitud de la sobrecarga (kPa o kN/m)
+    a: float          # [V.1.2.0] Distancia desde el muro (m)
+    b: float          # [V.1.2.0] Ancho de la zona cargada (m)
 
-# [V.1.0] Crea la clase que envuelve TODO el problema físico a resolver
+# [V.2.2.0] Estructura de datos para la geometría de la zapata de cimentación
+@dataclass
+class DatosZapata:
+    B: float           # [V.2.2.0] Ancho total de la base (m)
+    b_puntera: float   # [V.2.2.0] Longitud de la puntera/pie (m)
+    b_talon: float     # [V.2.2.0] Longitud del talón (m)
+    h_zapata: float    # [V.2.2.0] Peralte de la zapata (m)
+    df: float          # [V.2.2.0] Profundidad de desplante (m)
+    delta_base: float  # [V.2.2.0] Fricción base-suelo (°)
+    q_adm: float       # [V.2.2.0] Capacidad portante admisible (kPa)
+
+# [V.1.2.1] Objeto principal del problema físico a evaluar
 @dataclass
 class Caso:
-    # [V.1.0] Altura total geométrica del muro
-    altura: float                 
-    # [V.1.0] Arreglo que contiene todos los estratos
-    estratos: List[Estrato]       
-    # [V.1.0] Condición de empuje: 'activa', 'pasiva' o 'reposo'
-    condicion: str                
-    # [V.1.0] Teoría geotécnica seleccionada: 'Rankine', 'Coulomb' o 'Jaky'
-    metodo: str                   
-    # [V.1.0] Profundidad a la que aparece el Nivel Freático
-    z_agua: Optional[float]       
-    # [V.1.0] Peso específico del agua
-    gamma_agua: float             
-    # [V.1.0] Ángulo de inclinación de la superficie del relleno (α)
-    alpha: float                  
-    # [V.1.0] Ángulo de inclinación del muro (β)
-    beta: float                   
-    # [V.1.0] Coeficiente de aceleración sísmica horizontal
-    kh: float                     
-    # [V.1.0] Coeficiente de aceleración sísmica vertical
-    kv: float                     
-    # [V.1.0] Arreglo con todas las sobrecargas añadidas
-    cargas: List[Carga]           
+    altura: float                 # [V.1.2.0] Altura total del muro (m)
+    estratos: List[Estrato]       # [V.1.2.0] Lista de estratos de suelo
+    condicion: str                # [V.1.2.0] 'activa', 'pasiva' o 'reposo'
+    metodo: str                   # [V.1.2.0] 'Rankine', 'Coulomb' o 'Jaky'
+    z_agua: Optional[float]       # [V.1.2.0] Profundidad del Nivel Freático (m)
+    gamma_agua: float             # [V.1.2.0] Peso específico del agua (kN/m³)
+    alpha: float                  # [V.1.2.0] Inclinación del relleno α (°)
+    beta: float                   # [V.1.2.0] Inclinación de la cara del muro β (°)
+    kh: float                     # [V.1.2.0] Coeficiente sísmico horizontal
+    kv: float                     # [V.1.2.0] Coeficiente sísmico vertical
+    cargas: List[Carga]           # [V.1.2.0] Lista de sobrecargas externas
+    zapata: Optional[DatosZapata] = None  # [V.2.2.0] Geometría de zapata agregada para V2
 
-# [V.1.0] Fila matemática que guarda los resultados de empujes milímetro a milímetro
+# [V.1.2.0] Fila discreta del perfil de presiones
 @dataclass
 class FilaResultado:
-    # [V.1.0] Coordenada de profundidad (z) exacta
-    z: float          
-    # [V.1.0] Número de ID del estrato a esta profundidad
-    estrato: int      
-    # [V.1.0] Esfuerzo vertical efectivo (σ'v)
-    sigma_v: float    
-    # [V.1.0] Coeficiente estático de empuje de tierras (Ka, Kp o K0)
-    k: float          
-    # [V.1.0] Esfuerzo lateral generado por la tierra
-    suelo: float      
-    # [V.1.0] Presión de poros de agua
-    agua: float       
-    # [V.1.0] Esfuerzo aportado por sobrecargas
-    carga: float      
-    # [V.1.0] Incremento de presión por sismo
-    sismo: float      
-    # [V.1.0] Sumatoria de todos los esfuerzos actuantes
-    total: float      
-    # [V.1.0] Campo para aislar cargas uniformes de las elásticas (Boussinesq)
-    carga_inf: float = 0.0  
+    z: float          # [V.1.2.0] Coordenada de profundidad (m)
+    estrato: int      # [V.1.2.0] Índice del estrato
+    sigma_v: float    # [V.1.2.0] Esfuerzo vertical efectivo (kPa)
+    k: float          # [V.1.2.0] Coeficiente de empuje (Ka, Kp, K0)
+    suelo: float      # [V.1.2.0] Presión lateral del suelo (kPa)
+    agua: float       # [V.1.2.0] Presión de poros (kPa)
+    carga: float      # [V.1.2.0] Presión por sobrecarga (kPa)
+    sismo: float      # [V.1.2.0] Incremento sísmico (kPa)
+    total: float      # [V.1.2.0] Presión lateral total actuante (kPa)
+    carga_inf: float = 0.0  # [V.1.2.0] Separador para sobrecargas infinitas
 
-# [V.1.0] Define los polígonos gráficos extraídos para la Memoria de Cálculo PDF
+# [V.1.2.0] Polígono geométrico derivado del perfil de presiones
 @dataclass
 class AreaDetalle:
-    # [V.1.0] Número secuencial asignado a la figura geométrica
-    id: int           
-    # [V.1.0] Nombre del componente ('Suelo', 'Agua', 'Sobrecarga', 'Sismo')
-    componente: str   
-    # [V.1.0] Forma geométrica ('Rectángulo', 'Triángulo')
-    forma: str        
-    # [V.1.0] Magnitud de la fuerza representada por esta área
-    fuerza: float     
-    # [V.1.0] Coordenada Z del centro de gravedad
-    z_centro: float   
-    # [V.1.0] Brazo de palanca (y) respecto a la base del muro
-    y_base: float     
-    # [V.1.0] Presión en el centroide para colocar el número gráfico
-    p_centro: float   
-    # [V.1.0] Esfuerzo base para fórmulas de texto
-    p_calc: float = 0.0  
-    # [V.1.0] Altura del tramo para fórmulas de texto
-    h_tramo: float = 0.0 
+    id: int           # [V.1.2.0] Identificador numérico
+    componente: str   # [V.1.2.0] 'Suelo', 'Agua', 'Sobrecarga', 'Sismo'
+    forma: str        # [V.1.2.0] 'Triángulo', 'Rectángulo'
+    fuerza: float     # [V.1.2.0] Fuerza resultante (kN/m)
+    z_centro: float   # [V.1.2.0] Coordenada z del centroide (m)
+    y_base: float     # [V.1.2.0] Brazo de palanca respecto a la base (m)
+    p_centro: float   # [V.1.2.0] Presión centroidal (kPa)
+    p_calc: float = 0.0   # [V.1.2.0] Presión base para cálculo
+    h_tramo: float = 0.0  # [V.1.2.0] Altura del tramo geométrico
 
-# [V.1.0] Envoltorio final con todos los resultados de los empujes
+# [V.2.2.0] Estructura de resultados para la verificación de estabilidad geotécnica
+@dataclass
+class ResultadoEstabilidad:
+    W_muro: float          # [V.2.2.0] Peso propio del concreto (kN/m)
+    W_suelo: float         # [V.2.2.0] Peso del suelo sobre el talón (kN/m)
+    M_resistente: float    # [V.2.2.0] Momento resistente total (kN·m/m)
+    M_actuante: float      # [V.2.2.0] Momento volcante total (kN·m/m)
+    FS_volteo: float       # [V.2.2.0] Factor de seguridad contra volteo
+    FS_deslizamiento: float # [V.2.2.0] Factor de seguridad contra deslizamiento
+    excentricidad: float   # [V.2.2.0] Excentricidad e (m)
+    e_max: float           # [V.2.2.0] Excentricidad máxima admisible B/6 (m)
+    q_max: float           # [V.2.2.0] Presión máxima en la punta (kPa)
+    q_min: float           # [V.2.2.0] Presión mínima en el talón (kPa)
+    q_ult: float           # [V.2.2.0] Capacidad portante última (kPa)
+    FS_capacidad: float    # [V.2.2.0] Factor de seguridad por capacidad de carga
+    cumple_volteo: bool
+    cumple_deslizamiento: bool
+    cumple_excentricidad: bool
+    cumple_capacidad: bool
+
+# [V.1.2.1] Contenedor global con el resultado del análisis
 @dataclass
 class Resultado:
-    # [V.1.0] Incrusta el caso original
-    caso: Caso                                
-    # [V.1.0] Arreglo de todas las filas calculadas
-    filas: List[FilaResultado]                
-    # [V.1.0] Resultante Total del empuje
-    total: float                              
-    # [V.1.0] Momento Total de volcamiento
-    momento: float                            
-    # [V.1.0] Brazo de palanca de la Resultante Total (y_T)
-    y: float                                  
-    # [V.1.0] Fuerzas separadas por naturaleza (Suelo, Agua, etc.)
-    componentes: Dict[str, tuple]             
-    # [V.1.0] Lista de figuras geométricas cortadas
-    detalles: List[AreaDetalle] = field(default_factory=list) 
-    # [V.1.0] Avisos y alertas de cálculo
-    notas: List[str] = field(default_factory=list)
+    caso: Caso                                # [V.1.2.0] Objeto con el caso ingresado
+    filas: List[FilaResultado]                # [V.1.2.0] Lista con perfil discreto
+    total: float                              # [V.1.2.0] Empuje lateral total (kN/m)
+    momento: float                            # [V.1.2.0] Momento volcante (kN·m/m)
+    y: float                                  # [V.1.2.0] Punto de aplicación (m)
+    componentes: Dict[str, tuple]             # [V.1.2.0] Sumatorias por componente
+    detalles: List[AreaDetalle] = field(default_factory=list) # [V.1.2.0] Áreas desglosadas
+    notas: List[str] = field(default_factory=list)            # [V.1.2.0] Alertas numéricas
+    estabilidad: Optional[ResultadoEstabilidad] = None  # [V.2.2.0] Integración de estabilidad TP
 
-# ====================================================================
-# [V.2.0] NUEVAS CLASES PARA ESTABILIDAD DE MUROS
-# ====================================================================
-
-# [V.2.0] Define los bloques gravitacionales que estabilizan el muro (concreto, tierra arriba)
+# [V.2.2.0] Bloque gravitacional para análisis de pesos y momentos
 @dataclass
 class CargaVertical:
-    # [V.2.0] Nombre identificador (ej: "Zapata", "Pantalla")
-    nombre: str      
-    # [V.2.0] Peso gravitacional de este bloque en kN/m
-    peso: float      
-    # [V.2.0] Brazo de palanca horizontal (x) desde la punta de la zapata hasta su centroide
-    brazo_x: float   
+    nombre: str      # [V.2.2.0] Identificador del componente
+    peso: float      # [V.2.2.0] Fuerza gravitacional (kN/m)
+    brazo_x: float   # [V.2.2.0] Brazo horizontal desde el punto de giro (m)
 
-# [V.2.0] Define las propiedades del terreno sobre el que se apoya la zapata
+# [V.2.2.0] Parámetros resistentes de la superficie de desplante
 @dataclass
 class SueloCimentacion:
-    # [V.2.0] Ángulo de fricción interna del suelo de cimentación
-    phi_base: float  
-    # [V.2.0] Cohesión del suelo de cimentación
-    c_base: float    
-    # [V.2.0] Factor de reducción k1 para la fricción muro-suelo (usualmente 2/3)
-    k1: float = 0.67 
-    # [V.2.0] Factor de reducción k2 para la adhesión muro-suelo (usualmente 2/3)
-    k2: float = 0.67
+    phi_base: float  # [V.2.2.0] Ángulo de fricción de la base (°)
+    c_base: float    # [V.2.2.0] Adhesión o cohesión de la base (kPa)
+    k1: float = 0.67 # [V.2.2.0] Coeficiente de reducción de fricción
+    k2: float = 0.67 # [V.2.2.0] Coeficiente de reducción de cohesión
